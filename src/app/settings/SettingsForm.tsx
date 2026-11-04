@@ -19,7 +19,8 @@ export function SettingsForm({ models, model, keyHint, keySource }: Props) {
   const [state, action, pending] = useActionState<SaveState, FormData>(async (prev, form) => {
     setStale(false);
     const result = await saveSettingsAction(prev, form);
-    if (result?.ok) setApiKey("");
+    const submitted = form.get("apiKey");
+    if (result?.ok) setApiKey((current) => (current === submitted ? "" : current)); // keep anything typed while it was checking
     return result;
   }, null);
   const [show, setShow] = useState(false);
