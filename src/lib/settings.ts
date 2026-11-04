@@ -37,7 +37,6 @@ export async function getSettings(userId = currentUserId()) {
   return {
     model: (row?.model ?? MODELS[0]) as Model,
     hasKey: Boolean(key),
-    keyHint: key ? `••••${key.slice(-4)}` : null,
     keySource: savedKey ? ("settings" as const) : key ? ("env" as const) : null,
   };
 }
