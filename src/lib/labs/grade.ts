@@ -1,3 +1,4 @@
+import { canonical } from "./harness";
 import type { LabTest, ResultSet } from "./types";
 
 /** One canonical text form per value, so the browser and the server compare the same thing. */
@@ -30,4 +31,15 @@ export function gradeResult(expected: ResultSet, actual: ResultSet, ordered: boo
     { name: `Returns ${expected.rows.length} row${expected.rows.length === 1 ? "" : "s"}`, pass: count },
     { name: ordered ? "Rows match, in order" : "Rows match", pass: rows },
   ];
+}
+
+/** Code labs: each test passes when the function's return value equals the reference value (as canonical JSON). */
+export function gradeCode(expected: string[], tests: { name: string }[], values: (string | null)[]): LabTest[] {
+  return tests.map((t, i) => {
+    let pass = false;
+    try {
+      pass = values[i] != null && canonical(values[i]!) === expected[i];
+    } catch {}
+    return { name: t.name, pass };
+  });
 }

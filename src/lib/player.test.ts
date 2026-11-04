@@ -127,7 +127,7 @@ describe("labs", () => {
     expect(m.labs).toHaveLength(1);
     expect(m.labs[0]).toMatchObject({ kind: "logs", hints: 3, state: { done: false, hintsShown: [], canSolve: false, solution: null } });
     for (const secret of ["solution", "walkthrough", "expected", "ordered"]) expect(m.labs[0]).not.toHaveProperty(secret);
-    expect(m.labs[0].setup).toContain("create table auth_log");
+    expect(m.labs[0].kind === "logs" && m.labs[0].setup).toContain("create table auth_log");
 
     const quiz = (await submitQuiz(id, "local", 0, [1]))!;
     expect(quiz).toMatchObject({ passed: true, next: null, last: false }); // the lab is still open
@@ -135,12 +135,12 @@ describe("labs", () => {
   });
 
   it("grades rows on the server, gates the solution, and opens the next level", async () => {
-    const wrong = (await labSubmit(id, "local", 0, 0, { columns: ["ip"], rows: [["10.0.0.1"]] }))!;
+    const wrong = (await labSubmit(id, "local", 0, 0, { rows: { columns: ["ip"], rows: [["10.0.0.1"]] } }))!;
     expect(wrong.tests.map((t) => t.pass)).toEqual([false, true, false]); // one row, like the answer, but the wrong one
     expect(await labSolution(id, "local", 0, 0)).toBeNull(); // not yet: no hints used, one failed check
 
     expect(await labHint(id, "local", 0, 0)).toMatchObject({ hintsShown: ["Only the failed logins matter here."], canSolve: false });
-    const right = (await labSubmit(id, "local", 0, 0, { columns: ["source", "n"], rows: [["203.0.113.7", "14"]] }))!;
+    const right = (await labSubmit(id, "local", 0, 0, { rows: { columns: ["source", "n"], rows: [["203.0.113.7", "14"]] } }))!;
     expect(right).toMatchObject({ passed: true, stars: 2, levelDone: true, next: 1 });
 
     const map = (await courseMap(id, "local"))!;
@@ -151,6 +151,23 @@ describe("labs", () => {
     expect((await labHint(id, "local", 0, 0))!.canSolve).toBe(true);
     expect(await labSolution(id, "local", 0, 0)).toMatchObject({ solution: expect.stringContaining("having count(*) > 5") });
     expect((await courseMap(id, "local"))!.modules[0].stars).toBe(2); // opening it later never lowers stars already earned
-    expect(await labSubmit(id, "local", 1, 5, { columns: [], rows: [] })).toBeNull(); // no such lab
+    expect(await labSubmit(id, "local", 1, 5, { rows: { columns: [], rows: [] } })).toBeNull(); // no such lab
   });
+
+  it("grades a code lab from the values the function returned", async () => {
+    const db = await getDb();
+    const variation = { ...fakeIntake("soc").variations[0], modules: 1, weeks: 1, labs: { code: 1, terminal: 0, logs: 0 } };
+    const [c] = await db.insert(schema.courses).values({ userId: "local", title: "t", request: "soc", intent: "i", category: "c", variation, budgetCapTokens: 1_000_000 }).returning();
+    await runOutline(c.id);
+    await runModule(c.id, 0);
+    await finalize(c.id);
+    const lab = (await playModule(c.id, "local", 0))!.labs[0];
+    expect(lab).toMatchObject({ kind: "code", language: "python", entry: "failures_by_user" });
+    expect(lab).not.toHaveProperty("expected");
+    expect(await labSubmit(c.id, "local", 0, 0, { rows: { columns: [], rows: [] } })).toBeNull(); // wrong answer shape
+    const half = (await labSubmit(c.id, "local", 0, 0, { values: ["{}", '{"amy": 1}', "{}", "{}"] }))!;
+    expect(half.tests.map((t) => t.pass)).toEqual([true, true, false, true]); // keys and spacing don't matter, values do
+    const all = (await labSubmit(c.id, "local", 0, 0, { values: ["{}", '{"amy":1}', '{"cat":1,"amy":2}', "{}"] }))!;
+    expect(all).toMatchObject({ passed: true, stars: 2 }); // second check
+  }, 60_000);
 });

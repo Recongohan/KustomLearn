@@ -3,7 +3,7 @@ import { and, asc, eq } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import type { ModuleContent, Outline } from "./ai/generate";
 import type { Variation } from "./ai/intake";
-import { gradeResult } from "./labs/grade";
+import { gradeCode, gradeResult } from "./labs/grade";
 import type { LabTest, PublicLab, ResultSet } from "./labs/types";
 
 // The course player. Grading is deterministic and runs here; quiz answers never reach the browser before a submit.
@@ -122,13 +122,12 @@ export async function playModule(courseId: string, userId: string, position: num
     labs: (content.labs ?? []).map((lab, k) => {
       const row = byItem.get(labItem(position, k));
       const used = row?.hintsUsed ?? 0;
+      const pub: PublicLab =
+        lab.kind === "logs"
+          ? { kind: "logs", title: lab.title, task: lab.task, setup: lab.setup, starter: lab.starter, hints: lab.hints.length }
+          : { kind: "code", title: lab.title, task: lab.task, language: lab.language, entry: lab.entry, starter: lab.starter, tests: lab.tests, hints: lab.hints.length };
       return {
-        kind: lab.kind,
-        title: lab.title,
-        task: lab.task,
-        setup: lab.setup,
-        starter: lab.starter,
-        hints: lab.hints.length,
+        ...pub,
         state: {
           done: row?.status === "done",
           stars: row?.stars ?? 0,
@@ -248,14 +247,21 @@ export async function labSolution(courseId: string, userId: string, position: nu
 export type LabResult = { tests: LabTest[]; passed: boolean; stars: number; best: number; canSolve: boolean; next: number | null; levelDone: boolean };
 
 /**
- * Grades the rows the learner's query returned against the reference rows, which never leave the server.
- * shortcut: the browser runs the query and reports its rows, so a determined learner could fake them; fine for
- * self-study, re-run the query server-side in a sandbox before any shared leaderboard.
+ * Grades what the learner's code produced in the browser (a query's rows, or a function's return values) against
+ * the reference results, which never leave the server.
+ * shortcut: the browser reports its own results, so a determined learner could fake them; fine for self-study,
+ * re-run the code server-side in the validation sandbox before any shared leaderboard.
  */
-export async function labSubmit(courseId: string, userId: string, position: number, k: number, result: ResultSet): Promise<LabResult | null> {
+export type LabAnswer = { rows: ResultSet } | { values: (string | null)[] };
+
+export async function labSubmit(courseId: string, userId: string, position: number, k: number, answer: LabAnswer): Promise<LabResult | null> {
   const ctx = await labContext(courseId, userId, position, k);
   if (!ctx) return null;
-  const tests = gradeResult(ctx.lab.expected, result, ctx.lab.ordered);
+  const { lab } = ctx;
+  let tests: LabTest[];
+  if (lab.kind === "logs" && "rows" in answer) tests = gradeResult(lab.expected, answer.rows, lab.ordered);
+  else if (lab.kind === "code" && "values" in answer && answer.values.length === lab.tests.length) tests = gradeCode(lab.expected, lab.tests, answer.values);
+  else return null; // an answer of the wrong shape for this lab
   const passed = tests.every((t) => t.pass);
   const attempt = (ctx.row?.attempts ?? 0) + 1;
   const stars = labStars(passed, attempt, ctx.row?.hintsUsed ?? 0, !!ctx.row?.solutionSeen);

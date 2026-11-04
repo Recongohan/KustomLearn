@@ -88,4 +88,16 @@ describe("generation pipeline", () => {
     expect(calls.map((c) => c.reason)).toEqual(expect.arrayContaining([expect.stringMatching(/^Repair /)]));
     expect((await progressOf(id, "local"))!.spentTokens).toBe(3 * 11_000); // outline, module, one repair
   }, 30_000);
+
+  it("validates Python and JavaScript code labs and keeps their reference results", async () => {
+    const id = await newCourse(1_000_000, { modules: 1, labs: { code: 2, terminal: 0, logs: 0 } });
+    await runOutline(id);
+    await runModule(id, 0);
+    const db = await getDb();
+    const [m] = await db.select().from(schema.modules).where(eq(schema.modules.courseId, id));
+    const labs = (m.content as { labs: { kind: string; language: string; expected: string[] }[] }).labs;
+    expect(labs.map((l) => [l.kind, l.language])).toEqual([["code", "python"], ["code", "javascript"]]);
+    expect(labs[0].expected).toEqual(["{}", '{"amy":1}', '{"amy":2,"cat":1}', "{}"]);
+    expect(labs[1].expected).toEqual(['"203.0.x.x"', '"10.0.x.x"', '"127.0.x.x"']);
+  }, 60_000);
 });

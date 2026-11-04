@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { Diagram } from "@/components/player/Diagram";
+import { CodeLab } from "@/components/player/CodeLab";
 import { LogLab } from "@/components/player/LogLab";
 import { Markdown } from "@/components/player/Markdown";
 import { Quiz } from "@/components/player/Quiz";
@@ -36,9 +37,13 @@ async function Module({ params }: { params: Promise<{ id: string; n: string }> }
         </section>
       ))}
 
-      {m.labs.map((lab, k) => (
-        <LogLab key={k} courseId={id} position={position} index={k} lab={lab} />
-      ))}
+      {m.labs.map((lab, k) =>
+        lab.kind === "logs" ? (
+          <LogLab key={k} courseId={id} position={position} index={k} lab={lab} />
+        ) : (
+          <CodeLab key={k} courseId={id} position={position} index={k} lab={lab} />
+        ),
+      )}
 
       <Quiz courseId={id} position={position} questions={m.quiz} best={m.best.stars} />
     </article>

@@ -23,10 +23,10 @@ export async function submitAction(courseId: string, position: number, answers: 
 
 const Lab = Where.extend({ lab: z.number().int().min(0).max(16) });
 // The rows a lab query returned in the browser: bounded so a huge result can't be posted.
-const Rows = z.object({
-  columns: z.array(z.string().max(200)).max(50),
-  rows: z.array(z.array(z.string().max(2000).nullable()).max(50)).max(1000),
-});
+const Answer = z.union([
+  z.object({ rows: z.object({ columns: z.array(z.string().max(200)).max(50), rows: z.array(z.array(z.string().max(2000).nullable()).max(50)).max(1000) }) }),
+  z.object({ values: z.array(z.string().max(20_000).nullable()).max(12) }), // a code lab's return values, one per test
+]);
 
 export async function labHintAction(courseId: string, position: number, lab: number) {
   const w = Lab.safeParse({ courseId, position, lab });
@@ -40,7 +40,7 @@ export async function labSolutionAction(courseId: string, position: number, lab:
 
 export async function labSubmitAction(courseId: string, position: number, lab: number, result: unknown) {
   const w = Lab.safeParse({ courseId, position, lab });
-  const r = Rows.safeParse(result);
+  const r = Answer.safeParse(result);
   if (!w.success || !r.success) return null;
   return labSubmit(w.data.courseId, currentUserId(), w.data.position, w.data.lab, r.data);
 }

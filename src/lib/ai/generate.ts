@@ -3,7 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import type { Variation } from "./intake";
-import { LogsLab, type StoredLab } from "../labs/types";
+import { CodeLab, LogsLab, type StoredLab } from "../labs/types";
 import { billedUsage, fallbackParams, type PricedModel } from "./pricing";
 
 export const Outline = z.object({
@@ -17,10 +17,12 @@ export const ModuleContent = z.object({
   diagram: z.string(), // Mermaid source, or "" when a diagram wouldn't help
   quiz: z.array(z.object({ question: z.string(), choices: z.array(z.string()), answer: z.number().int(), explanation: z.string() })),
   labs: z.array(LogsLab),
+  codeLabs: z.array(CodeLab),
 });
 type GeneratedModule = z.infer<typeof ModuleContent>;
 /** A module as stored: its labs validated and carrying their reference result. Courses from before labs have none. */
-export type ModuleContent = Omit<GeneratedModule, "labs"> & { labs?: StoredLab[] };
+export type ModuleContent = Omit<GeneratedModule, "labs" | "codeLabs"> & { labs?: StoredLab[] };
+export type LabCounts = { logs: number; code: number };
 
 export type CourseBrief = { intent: string; category: string; request: string; variation: Variation };
 export type Usage = { inputTokens: number; outputTokens: number; costMicros: number };
@@ -33,6 +35,12 @@ export class GenerationError extends Error {
 
 export const STEP_MAX_OUTPUT = { outline: 6000, module: 16000, repair: 8000 };
 
+const CODE_RULES = `Each code lab is graded by calling the learner's function with each test's arguments and comparing the return value with your solution's, so:
+  language: "python" or "javascript", whichever fits the course (Python unless the course is about JavaScript or the web).
+  entry: the function's name. starter: the signature with a stub body that does not solve it. solution: a complete reference implementation, standard library only, no input(), files or network.
+  task: markdown that says what the function takes and returns, with one worked example.
+  tests: 4-8, each with a short name and args, a JSON array of the call's arguments (e.g. "[[3, 1, 2]]" for one list); include edge cases. Return values must be JSON: numbers, strings, booleans, lists, objects or null.
+  hints: exactly 3, from a nudge to nearly the answer, never the full code. walkthrough: why the solution works.`;
 const LAB_RULES = `Each lab is graded by running the learner's SQL and comparing its rows with your solution's rows, so:
   setup: Postgres SQL that creates 1-3 log tables and inserts 30-200 rows of realistic synthetic logs (timestamps, hosts, users, IPs, event IDs) with the pattern to find hidden among normal noise. Plain CREATE TABLE and INSERT, or generate_series; nothing else.
   task: markdown that names the tables and asks one question a single SELECT answers ("Which IPs failed to log in more than 5 times?").
@@ -101,7 +109,7 @@ export async function generateModule(
   c: CourseBrief,
   outline: Outline,
   index: number,
-  labs: number,
+  labs: LabCounts,
   opts: Opts,
 ): Promise<{ data: GeneratedModule; usage: Usage }> {
   const maxTokens = Math.min(STEP_MAX_OUTPUT.module, opts.maxTokens ?? Infinity);
@@ -119,10 +127,11 @@ Module format:
 - sections: 3-5 lesson sections in GitHub-flavored markdown, with code blocks or commands where they help.
 - diagram: one Mermaid flowchart or sequence diagram if it makes an idea clearer, otherwise "".
 - quiz: 4-6 multiple-choice questions with 4 choices each; answer is the 0-based index; explanation says why.
-- labs: the number of log investigation labs the task asks for (often 0). ${LAB_RULES}`,
+- labs: the number of log investigation labs the task asks for (often 0). ${LAB_RULES}
+- codeLabs: the number of code labs the task asks for (often 0). ${CODE_RULES}`,
       task: `Write module ${index + 1}: "${m.title}". ${m.summary}
 Objectives: ${m.objectives.join("; ")}
-Labs: exactly ${labs} log investigation lab${labs === 1 ? "" : "s"}.`,
+Labs: exactly ${labs.logs} log investigation lab${labs.logs === 1 ? "" : "s"} and ${labs.code} code lab${labs.code === 1 ? "" : "s"}.`,
     },
     { ...opts, maxTokens },
   );
@@ -133,15 +142,16 @@ Labs: exactly ${labs} log investigation lab${labs === 1 ? "" : "s"}.`,
 }
 
 /** Asks for a fixed version of a lab whose reference solution failed validation. */
-export async function repairLab(c: CourseBrief, lab: LogsLab, error: string, opts: Opts): Promise<{ data: LogsLab; usage: Usage }> {
+export async function repairLab<L extends LogsLab | CodeLab>(c: CourseBrief, lab: L, error: string, opts: Opts): Promise<{ data: L; usage: Usage }> {
   const maxTokens = Math.min(STEP_MAX_OUTPUT.repair, opts.maxTokens ?? Infinity);
   if (process.env.KL_FAKE_AI === "1") return (await import("./fixtures")).fakeRepair(lab, maxTokens);
+  const code = "entry" in lab;
   return call(
-    LogsLab,
+    (code ? CodeLab : LogsLab) as unknown as z.ZodType<L>,
     `${brief(c)}
 
-This log investigation lab failed its check: ${error}.
-Return a corrected lab that keeps the same idea. ${LAB_RULES}
+This ${code ? "code" : "log investigation"} lab failed its check: ${error}.
+Return a corrected lab that keeps the same idea. ${code ? CODE_RULES : LAB_RULES}
 
 The lab:
 ${JSON.stringify(lab)}`,

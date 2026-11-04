@@ -15,10 +15,29 @@ export type LogsLab = z.infer<typeof LogsLab>;
 
 export type ResultSet = { columns: string[]; rows: (string | null)[][] };
 
-/** A lab as stored after generation: validated, with the reference result kept server-side for grading. */
-export type StoredLab = LogsLab & { kind: "logs"; expected: ResultSet };
+/** A code lab: write one function; it is called with each test's arguments and its return value is compared. */
+export const CodeLab = z.object({
+  title: z.string(),
+  task: z.string(), // markdown: what the function must do, with an example
+  language: z.enum(["python", "javascript"]),
+  entry: z.string(), // the function's name
+  starter: z.string(), // a stub with the signature
+  solution: z.string(), // the reference implementation
+  walkthrough: z.string(),
+  hints: z.array(z.string()),
+  tests: z.array(z.object({ name: z.string(), args: z.string() })), // args: a JSON array of the call's arguments
+});
+export type CodeLab = z.infer<typeof CodeLab>;
 
-/** What the browser gets: enough to build the tables and work, nothing that gives the answer away. */
-export type PublicLab = { kind: "logs"; title: string; task: string; setup: string; starter: string; hints: number };
+/** Labs as stored after generation: validated, with the reference results kept server-side for grading. */
+export type StoredLab = (LogsLab & { kind: "logs"; expected: ResultSet }) | (CodeLab & { kind: "code"; expected: string[] });
+
+/** What the browser gets: enough to work, nothing that gives the answer away. */
+export type PublicLab =
+  | { kind: "logs"; title: string; task: string; setup: string; starter: string; hints: number }
+  | { kind: "code"; title: string; task: string; language: CodeLab["language"]; entry: string; starter: string; tests: CodeLab["tests"]; hints: number };
+
+/** One test of a code run: the return value as canonical JSON, or the error it raised. */
+export type CodeOutcome = { value: string | null; error: string | null };
 
 export type LabTest = { name: string; pass: boolean };

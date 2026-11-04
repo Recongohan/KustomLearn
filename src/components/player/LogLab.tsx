@@ -1,14 +1,15 @@
 "use client";
 import { useEffect, useRef, useState, useTransition } from "react";
-import { AnimatePresence, motion } from "motion/react";
+import { motion } from "motion/react";
 import type { PGlite } from "@electric-sql/pglite";
 import { labHintAction, labSolutionAction, labSubmitAction } from "@/app/course/[id]/m/[n]/actions";
 import { toResultSet } from "@/lib/labs/grade";
 import type { PublicLab, ResultSet } from "@/lib/labs/types";
 import type { LabResult, LabState } from "@/lib/player";
+import { LabHelp, Verdict } from "./LabParts";
 import { Markdown } from "./Markdown";
 
-type Props = { courseId: string; position: number; index: number; lab: PublicLab & { state: LabState } };
+type Props = { courseId: string; position: number; index: number; lab: Extract<PublicLab, { kind: "logs" }> & { state: LabState } };
 type Table = { name: string; columns: string[]; rows: number };
 
 const spring = { type: "spring", stiffness: 480, damping: 28 } as const;
@@ -64,6 +65,7 @@ export function LogLab({ courseId, position, index, lab }: Props) {
   const run = async (): Promise<ResultSet | null> => {
     if (!db.current) return null;
     setRunError(null);
+    setVerdict(null); // the last verdict was for the query as it was then
     try {
       const r = await db.current.query<unknown[]>(query, [], { rowMode: "array" });
       const set = toResultSet(r.fields, r.rows);
@@ -80,7 +82,7 @@ export function LogLab({ courseId, position, index, lab }: Props) {
     start(async () => {
       const set = await run();
       if (!set) return;
-      const r = await labSubmitAction(courseId, position, index, { columns: set.columns, rows: set.rows.slice(0, 1000).map((row) => row.slice(0, 50)) });
+      const r = await labSubmitAction(courseId, position, index, { rows: { columns: set.columns, rows: set.rows.slice(0, 1000).map((row) => row.slice(0, 50)) } });
       if (!r) return setRunError("Couldn't check that. Try again.");
       setVerdict(r);
       setCanSolve(r.canSolve);
@@ -168,31 +170,7 @@ export function LogLab({ courseId, position, index, lab }: Props) {
         </motion.p>
       )}
 
-      {verdict && (
-        <div className="flex flex-col gap-3" aria-live="polite">
-          <ul className="grid gap-2 sm:grid-cols-3" aria-label="Tests">
-            {verdict.tests.map((t, i) => (
-              <motion.li
-                key={`${t.name}-${i}`}
-                initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                transition={{ ...spring, delay: i * 0.08 }}
-                className={`flex items-center gap-2 rounded-2xl px-3 py-2.5 text-sm font-semibold ${t.pass ? "bg-green/15 text-green-ink" : "bg-pink/15 text-pink-ink"}`}
-              >
-                <span aria-hidden="true">{t.pass ? "✓" : "✗"}</span>
-                <span>{t.name}</span>
-                <span className="sr-only">{t.pass ? "passed" : "failed"}</span>
-              </motion.li>
-            ))}
-          </ul>
-          <p className="font-display text-lg font-extrabold">
-            {verdict.passed ? (verdict.stars === 3 ? "Perfect, first try with no hints" : "Lab cleared") : `${verdict.tests.filter((t) => t.pass).length} of ${verdict.tests.length} tests pass`}
-          </p>
-          {verdict.passed && verdict.next != null && (
-            <a href={`/course/${courseId}/m/${verdict.next + 1}`} className="flex h-12 w-fit items-center rounded-2xl bg-green px-6 font-bold text-[#06281a] shadow-[0_4px_0_#1a9a62]">Next level</a>
-          )}
-        </div>
-      )}
+      {verdict && <Verdict verdict={verdict} courseId={courseId} />}
 
       {result && (
         <div className="overflow-x-auto rounded-2xl bg-panel-2">
@@ -210,36 +188,7 @@ export function LogLab({ courseId, position, index, lab }: Props) {
         </div>
       )}
 
-      <div className="flex flex-col gap-2">
-        <AnimatePresence initial={false}>
-          {hints.map((h, i) => (
-            <motion.p key={i} initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} className="rounded-2xl bg-gold/10 p-3 text-sm">
-              <span className="font-semibold text-gold-ink">Hint {i + 1}: </span>
-              {h}
-            </motion.p>
-          ))}
-        </AnimatePresence>
-        <div className="flex flex-wrap gap-2">
-          {hints.length < lab.hints && !solution && (
-            <button type="button" onClick={hint} disabled={pending} className="min-h-11 rounded-xl bg-panel-2 px-4 text-sm font-semibold">
-              Get a hint ({hints.length + 1} of {lab.hints}){hints.length < 2 && !done ? " · costs a star" : ""}
-            </button>
-          )}
-          {canSolve && !solution && (
-            <button type="button" onClick={reveal} disabled={pending} className="min-h-11 rounded-xl bg-panel-2 px-4 text-sm font-semibold text-muted">
-              Show the solution · caps this lab at 1 star
-            </button>
-          )}
-        </div>
-        {solution && (
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-2 rounded-2xl bg-panel-2 p-4">
-            <p className="font-semibold">Solution</p>
-            <pre className="overflow-x-auto text-sm"><code>{solution.solution}</code></pre>
-            <Markdown>{solution.walkthrough}</Markdown>
-            <button type="button" onClick={() => setQuery(solution.solution)} className="min-h-11 w-fit rounded-xl border border-line px-4 text-sm font-semibold">Put it in the editor</button>
-          </motion.div>
-        )}
-      </div>
+      <LabHelp hints={hints} total={lab.hints} canSolve={canSolve} solution={solution} done={done} pending={pending} onHint={hint} onReveal={reveal} onUse={setQuery} />
     </section>
   );
 }

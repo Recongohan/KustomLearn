@@ -1,7 +1,8 @@
 import { costMicros } from "./pricing";
 import type { Intake } from "./intake";
 import { GenerationError, type Outline } from "./generate";
-import type { LogsLab } from "../labs/types";
+import type { CodeLab, LogsLab } from "../labs/types";
+import type { LabCounts } from "./generate";
 
 const FAKE_USAGE = { inputTokens: 5_000, outputTokens: 6_000, costMicros: costMicros("claude-opus-5-5", 5_000, 6_000) };
 
@@ -27,7 +28,7 @@ export function fakeOutline(modules: number, maxTokens: number): { data: Outline
   };
 }
 
-export function fakeModule(title: string, maxTokens: number, labs = 0) {
+export function fakeModule(title: string, maxTokens: number, labs: LabCounts = { logs: 0, code: 0 }) {
   fakeLimit(maxTokens);
   return {
     data: {
@@ -37,7 +38,8 @@ export function fakeModule(title: string, maxTokens: number, labs = 0) {
       ],
       diagram: "flowchart LR\n  A[Alert] --> B[Triage] --> C{Real?}\n  C -->|yes| D[Escalate]\n  C -->|no| E[Close]",
       quiz: [{ question: "Which Windows event ID is a failed logon?", choices: ["4624", "4625", "4688", "4720"], answer: 1, explanation: "4625 records a failed logon attempt." }],
-      labs: Array.from({ length: labs }, () => ({ ...FAKE_LAB, solution: "select attacker_ip from auth_log" })), // broken until repaired
+      labs: Array.from({ length: labs.logs }, () => ({ ...FAKE_LAB, solution: "select attacker_ip from auth_log" })), // broken until repaired
+      codeLabs: Array.from({ length: labs.code }, (_, i) => (i % 2 ? FAKE_JS_LAB : FAKE_PY_LAB)),
     },
     usage: FAKE_USAGE,
   };
@@ -76,7 +78,40 @@ from generate_series(1, 14) n;`,
   ordered: false,
 };
 
-export function fakeRepair(lab: LogsLab, maxTokens: number) {
+export function fakeRepair<L extends LogsLab | CodeLab>(lab: L, maxTokens: number) {
   fakeLimit(maxTokens);
-  return { data: { ...lab, solution: FAKE_LAB.solution }, usage: FAKE_USAGE };
+  return { data: { ...lab, solution: "entry" in lab ? lab.solution : FAKE_LAB.solution }, usage: FAKE_USAGE };
 }
+
+export const FAKE_PY_LAB: CodeLab = {
+  title: "Count failures per user",
+  task: "Write `failures_by_user(events)`. Each event is `{\"user\": str, \"ok\": bool}`. Return a dict from each user to how many of their events failed, leaving out users with none.\n\nExample: `[{\"user\": \"amy\", \"ok\": false}, {\"user\": \"bob\", \"ok\": true}]` gives `{\"amy\": 1}`.",
+  language: "python",
+  entry: "failures_by_user",
+  starter: "def failures_by_user(events):\n    counts = {}\n    # your code here\n    return counts\n",
+  solution: "def failures_by_user(events):\n    counts = {}\n    for e in events:\n        if not e['ok']:\n            counts[e['user']] = counts.get(e['user'], 0) + 1\n    return counts\n",
+  walkthrough: "Walk the events once. For each failure, add one to that user's count, starting from 0 with `dict.get`. Users who never fail never get a key.",
+  hints: ["Loop over the events and skip the successful ones.", "Keep a dict and add one for the user of each failure.", "`counts.get(user, 0) + 1` starts a new user at 1."],
+  tests: [
+    { name: "no events", args: "[[]]" },
+    { name: "one failure", args: '[[{"user": "amy", "ok": false}, {"user": "bob", "ok": true}]]' },
+    { name: "repeat offender", args: '[[{"user": "amy", "ok": false}, {"user": "amy", "ok": false}, {"user": "cat", "ok": false}]]' },
+    { name: "all fine", args: '[[{"user": "amy", "ok": true}]]' },
+  ],
+};
+
+export const FAKE_JS_LAB: CodeLab = {
+  title: "Mask the IPs",
+  task: "Write `maskIp(ip)`: keep the first two parts of an IPv4 address and replace the rest with `x`.\n\nExample: `maskIp(\"203.0.113.7\")` gives `\"203.0.x.x\"`.",
+  language: "javascript",
+  entry: "maskIp",
+  starter: "function maskIp(ip) {\n  return ip;\n}\n",
+  solution: "function maskIp(ip) {\n  const [a, b] = ip.split('.');\n  return `${a}.${b}.x.x`;\n}\n",
+  walkthrough: "Split on dots, keep the first two parts, and join them with two `x` parts.",
+  hints: ["`ip.split('.')` gives the four parts.", "You only need the first two.", "Build the string with a template literal."],
+  tests: [
+    { name: "public address", args: '["203.0.113.7"]' },
+    { name: "private address", args: '["10.0.0.42"]' },
+    { name: "loopback", args: '["127.0.0.1"]' },
+  ],
+};

@@ -1,7 +1,10 @@
 import "server-only";
 import { Worker } from "node:worker_threads";
 import { gradeResult, toResultSet } from "./grade";
-import type { LogsLab, ResultSet } from "./types";
+import { IDENT, canonical, runJs } from "./harness";
+import { getQuickJS } from "./quickjs-node";
+import { runPython } from "./run-python";
+import type { CodeLab, CodeOutcome, LogsLab, ResultSet } from "./types";
 
 const TIMEOUT_MS = 10_000;
 const MAX_SETUP = 60_000; // characters of SQL
@@ -54,4 +57,65 @@ export async function validateLab(lab: LogsLab): Promise<{ ok: true; expected: R
     return { ok: false, error: "the starter query already gives the answer" };
   }
   return { ok: true, expected };
+}
+
+const MAX_CODE = 20_000;
+
+/** Normalises each test's arguments to plain JSON, or says which test is malformed. */
+export function normaliseTests(tests: CodeLab["tests"]): string[] | string {
+  const out: string[] = [];
+  for (const t of tests) {
+    try {
+      const v = JSON.parse(t.args);
+      if (!Array.isArray(v)) return `test "${t.name}" has arguments that are not a JSON array`;
+      out.push(JSON.stringify(v));
+    } catch {
+      return `test "${t.name}" has arguments that are not valid JSON`;
+    }
+  }
+  return out;
+}
+
+async function runCode(lab: CodeLab, codes: string[], args: string[]): Promise<({ results: CodeOutcome[] } | { error: string })[]> {
+  if (lab.language === "python") return runPython(codes, lab.entry, args);
+  const qjs = await getQuickJS();
+  return codes.map((code) => runJs(qjs, code, lab.entry, args));
+}
+
+/** Runs the reference solution on every test; its return values become what the learner's code must match. */
+export async function validateCodeLab(lab: CodeLab): Promise<{ ok: true; expected: string[]; tests: CodeLab["tests"] } | { ok: false; error: string }> {
+  if (!IDENT.test(lab.entry)) return { ok: false, error: "the function name is not a valid identifier" };
+  if (lab.tests.length < 3 || lab.tests.length > 12) return { ok: false, error: "it needs between 3 and 12 tests" };
+  if (lab.solution.length > MAX_CODE || lab.starter.length > MAX_CODE) return { ok: false, error: "the code is too long" };
+  if (lab.hints.length < 1) return { ok: false, error: "it has no hints" };
+  const args = normaliseTests(lab.tests);
+  if (typeof args === "string") return { ok: false, error: args };
+  let runs;
+  try {
+    runs = await runCode(lab, [lab.solution, lab.starter], args);
+  } catch (e) {
+    return { ok: false, error: `the code could not run: ${e instanceof Error ? e.message : String(e)}` };
+  }
+  const [solution, starter] = runs;
+  if ("error" in solution) return { ok: false, error: `the solution failed: ${solution.error}` };
+  const failed = solution.results.findIndex((r) => r.error != null || r.value == null);
+  if (failed >= 0) return { ok: false, error: `the solution fails test "${lab.tests[failed].name}": ${solution.results[failed].error ?? "no value"}` };
+  let expected: string[];
+  try {
+    expected = solution.results.map((r) => canonical(r.value!));
+  } catch {
+    return { ok: false, error: "the solution returns a value that is not JSON" };
+  }
+  if (!("error" in starter) && starter.results.every((r, i) => r.value != null && safeCanonical(r.value) === expected[i])) {
+    return { ok: false, error: "the starter code already passes every test" };
+  }
+  return { ok: true, expected, tests: lab.tests.map((t, i) => ({ name: t.name, args: args[i] })) };
+}
+
+export function safeCanonical(v: string): string | null {
+  try {
+    return canonical(v);
+  } catch {
+    return null;
+  }
 }
