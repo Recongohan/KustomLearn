@@ -28,9 +28,14 @@ async function connectNeon(url: string) {
 
 /** One shared connection. DATABASE_URL set → Neon/Postgres, otherwise embedded PGlite in PGLITE_DIR. */
 export function getDb(): Promise<Db> {
-  dbPromise ??= process.env.DATABASE_URL
-    ? connectNeon(process.env.DATABASE_URL)
-    : connectPglite(process.env.PGLITE_DIR ?? path.join(process.cwd(), "data", "pglite"));
+  dbPromise ??= (
+    process.env.DATABASE_URL
+      ? connectNeon(process.env.DATABASE_URL)
+      : connectPglite(process.env.PGLITE_DIR ?? path.join(process.cwd(), "data", "pglite"))
+  ).catch((err) => {
+    dbPromise = undefined; // let the next request retry instead of caching the failure
+    throw err;
+  });
   return dbPromise;
 }
 

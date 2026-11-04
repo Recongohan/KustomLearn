@@ -12,6 +12,9 @@ reviews:
     - "!docs/design/**"
     - "!drizzle/meta/**"
     - "!package-lock.json"
+  tools:
+    biome:
+      enabled: false # can't parse Tailwind v4 CSS; ESLint covers the code
   path_instructions:
     - path: "src/**"
       instructions: >-
