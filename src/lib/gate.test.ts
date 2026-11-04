@@ -51,7 +51,9 @@ describe("password gate", () => {
     recordFailure("1.2.3.4", now);
     expect(lockedFor("1.2.3.4", now)).toBeGreaterThan(0);
     expect(lockedFor("5.6.7.8", now)).toBe(0);
-    expect(lockedFor("1.2.3.4", now + 15 * 60_000)).toBe(0);
+    recordFailure("1.2.3.4", now + 10 * 60_000); // a failure while locked restarts the full window
+    expect(lockedFor("1.2.3.4", now + 15 * 60_000)).toBeGreaterThan(0);
+    expect(lockedFor("1.2.3.4", now + 25 * 60_000)).toBe(0);
     recordFailure("9.9.9.9", now);
     clearFailures("9.9.9.9");
     expect(lockedFor("9.9.9.9", now)).toBe(0);
