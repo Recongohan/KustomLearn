@@ -69,6 +69,9 @@ Notes:
 - **Hosted mode:** `currentUserId()` throws when `DATABASE_URL` is set, failing closed until Clerk lands.
 - **Shell:** shell-safety blocks heredocs that contain backticks or `$`. Use Write/Edit. Kill dev servers by PID, not `pkill`.
 
+## Backlog from the owner (do later, not now)
+- Motion pass across the app: animate typing (e.g. the describe box on /new and text as it appears), visual feedback on every input and action, and animations wherever they fit. Each one needs a `prefers-reduced-motion` fallback.
+
 ## Later milestones
 - 4: course player (lessons, quizzes, world map)
 - 5: labs (code, terminal, logs) with validation in the pipeline
