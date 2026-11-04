@@ -5,7 +5,7 @@ import { Pip } from "@/components/Pip";
 import type { Variation } from "@/lib/ai/intake";
 import type { PricedModel } from "@/lib/ai/pricing";
 import { formatUsd } from "@/lib/ai/pricing";
-import { estimate } from "@/lib/estimate";
+import { estimate, formatTokens } from "@/lib/estimate";
 import { createCourseAction, understandAction, type UnderstandState } from "./actions";
 
 const EXAMPLES = [
@@ -89,7 +89,7 @@ export function NewCourse({ model }: { model: PricedModel }) {
           >
             Build my 3 options
           </motion.button>
-          <span className="text-sm text-muted">One quick AI call, usually about a cent.</span>
+          <span className="text-sm text-muted">One quick AI call, about 3K tokens.</span>
         </div>
         <ErrorLine error={error} />
       </motion.section>
@@ -112,7 +112,7 @@ export function NewCourse({ model }: { model: PricedModel }) {
       <motion.header initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <span className="rounded-full bg-panel-2 px-3 py-1 font-semibold text-blue-ink">{intake.category}</span>
-          <span className="text-muted">Designed for {formatUsd(result.costMicros)}</span>
+          <span className="text-muted">Designed with {formatTokens(result.tokens)} tokens</span>
           <button type="button" onClick={() => setResult(null)} className="ml-auto min-h-11 px-2 font-medium text-muted underline-offset-4 hover:underline">Change my answer</button>
         </div>
         <h1 className="font-display text-3xl font-extrabold leading-tight tracking-tight md:text-4xl">{intake.intent}</h1>
@@ -190,11 +190,14 @@ export function NewCourse({ model }: { model: PricedModel }) {
 
             <div className="flex flex-col gap-4 rounded-2xl bg-panel-2 p-4 md:flex-row md:items-center">
               <div className="flex-1">
-                <p className="text-sm text-muted">Estimated cost to build, once</p>
-                <motion.p key={est.capMicros} initial={{ scale: 1.08 }} animate={{ scale: 1 }} className="font-display text-3xl font-extrabold">
-                  {formatUsd(est.lowMicros)}–{formatUsd(est.highMicros)}
+                <p className="text-sm text-muted">Building it once uses about</p>
+                <motion.p key={est.capTokens} initial={{ scale: 1.08 }} animate={{ scale: 1 }} className="font-display text-3xl font-extrabold">
+                  {formatTokens(est.lowTokens)}–{formatTokens(est.highTokens)} tokens
                 </motion.p>
-                <p className="text-sm text-muted">Hard cap {formatUsd(est.capMicros)}. It pauses and asks before going over. After that the course runs with no AI calls.</p>
+                <p className="text-sm text-muted">
+                  Stops at {formatTokens(est.capTokens)} and asks before using more. After that the course runs with no AI calls.
+                  <span className="block text-xs opacity-80">About {formatUsd(est.lowMicros)}–{formatUsd(est.highMicros)} on your Anthropic bill.</span>
+                </p>
               </div>
               <motion.button
                 type="button"

@@ -1,5 +1,15 @@
 import { describe, it, expect } from "vitest";
-import { estimate } from "./estimate";
+import { estimate, formatTokens } from "./estimate";
+
+describe("tokens", () => {
+  it("formats like the UI shows them", () => {
+    expect([formatTokens(950), formatTokens(212_400), formatTokens(1_000_000), formatTokens(1_250_000)]).toEqual(["950", "212K", "1M", "1.3M"]);
+  });
+  it("token range is the same whatever the model", () => {
+    const v = { modules: 6, labs: { code: 1, terminal: 3, logs: 4 }, capstone: false };
+    expect(estimate(v, "claude-haiku-5-5").capTokens).toBe(estimate(v, "claude-opus-5-5").capTokens);
+  });
+});
 import { costMicros } from "./ai/pricing";
 import { normalize } from "./ai/intake";
 import { fakeIntake } from "./ai/fixtures";

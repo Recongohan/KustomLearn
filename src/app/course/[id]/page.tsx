@@ -4,7 +4,7 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import { getDb, schema } from "@/db";
 import type { Variation } from "@/lib/ai/intake";
-import { formatUsd } from "@/lib/ai/pricing";
+import { estimate, formatTokens } from "@/lib/estimate";
 import { currentUserId } from "@/lib/settings";
 
 async function Course({ id }: { id: Promise<string> }) {
@@ -29,7 +29,7 @@ async function Course({ id }: { id: Promise<string> }) {
           ["Timeline", `${v.weeks} weeks · ${v.hoursPerWeek} h/week`],
           ["Modules", String(v.modules)],
           ["Labs", `${v.labs.code} code · ${v.labs.terminal} terminal · ${v.labs.logs} logs`],
-          ["Budget cap", course.budgetCapMicros ? formatUsd(course.budgetCapMicros) : "—"],
+          ["Token budget", `${formatTokens(estimate(v, "claude-opus-5-5").capTokens)} max`], // tokens don't depend on the model
         ].map(([label, value]) => (
           <div key={label} className="rounded-2xl border border-line bg-panel p-4">
             <p className="text-sm text-muted">{label}</p>

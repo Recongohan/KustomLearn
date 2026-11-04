@@ -9,7 +9,7 @@ import { estimate } from "@/lib/estimate";
 import { currentUserId, getApiKey, getSettings } from "@/lib/settings";
 
 export type UnderstandState =
-  | { ok: true; request: string; intake: Intake; costMicros: number }
+  | { ok: true; request: string; intake: Intake; tokens: number }
   | { ok: false; message: string };
 
 const Request = z.string().trim().min(8, "Tell me a bit more, at least a few words.").max(2000, "Keep it under 2000 characters.");
@@ -27,7 +27,7 @@ export async function understandAction(raw: string): Promise<UnderstandState> {
     const cost = costMicros(model, inputTokens, outputTokens);
     const db = await getDb();
     await db.insert(schema.aiCalls).values({ userId, reason: "Understand what you want to learn", model, inputTokens, outputTokens, costMicros: cost });
-    return { ok: true, request: parsed.data, intake, costMicros: cost };
+    return { ok: true, request: parsed.data, intake, tokens: inputTokens + outputTokens };
   } catch (err) {
     if (err instanceof IntakeError) return { ok: false, message: err.message };
     if (err instanceof Anthropic.AuthenticationError) return { ok: false, message: "Your Anthropic key was rejected. Update it in Settings." };
