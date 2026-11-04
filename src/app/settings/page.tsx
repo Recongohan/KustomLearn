@@ -4,7 +4,7 @@ import { SettingsForm } from "./SettingsForm";
 
 async function Form() {
   const s = await getSettings();
-  return <SettingsForm models={[...MODELS]} model={s.model} keyHint={s.keyHint} keySource={s.keySource} />;
+  return <SettingsForm models={[...MODELS]} model={s.model} keySource={s.keySource} />;
 }
 
 export default function SettingsPage() {

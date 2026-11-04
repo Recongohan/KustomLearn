@@ -9,9 +9,9 @@ const LABELS: Record<string, string> = {
   "claude-haiku-5-5": "Claude Haiku 5.5 · cheapest",
 };
 
-type Props = { models: string[]; model: string; keyHint: string | null; keySource: "settings" | "env" | null };
+type Props = { models: string[]; model: string; keySource: "settings" | "env" | null };
 
-export function SettingsForm({ models, model, keyHint, keySource }: Props) {
+export function SettingsForm({ models, model, keySource }: Props) {
   // Controlled fields: React resets uncontrolled ones after every action, which would wipe a mistyped key.
   const [apiKey, setApiKey] = useState("");
   const [selected, setSelected] = useState(model);
@@ -45,7 +45,7 @@ export function SettingsForm({ models, model, keyHint, keySource }: Props) {
             onChange={(e) => (setApiKey(e.target.value), setStale(true))}
             autoComplete="off"
             spellCheck={false}
-            placeholder={keyHint ? `Saved ${keyHint}` : "sk-ant-…"}
+            placeholder={keySource === "settings" ? "A key is saved" : "sk-ant-…"}
             aria-describedby="apiKey-help"
             className="h-12 min-w-0 flex-1 rounded-xl border border-line bg-panel-2 px-4 font-mono text-sm outline-none focus:border-blue"
           />
@@ -54,13 +54,13 @@ export function SettingsForm({ models, model, keyHint, keySource }: Props) {
           </button>
         </div>
         <p id="apiKey-help" className="text-sm text-muted">
-          {keySource === "env" ? `Using ANTHROPIC_API_KEY from the environment (${keyHint}). Paste one to override.` : keyHint ? "Leave empty to keep the saved key." : "Get one at console.anthropic.com. It's checked before saving."}
+          {keySource === "env" ? "Using ANTHROPIC_API_KEY from the environment. Paste one to override." : keySource ? "Leave empty to keep the saved key." : "Get one at console.anthropic.com. It's checked before saving."}
         </p>
       </div>
 
       <div className="flex flex-col gap-2">
         <label htmlFor="model" className="font-semibold">Model</label>
-        <select id="model" name="model" value={selected} onChange={(e) => (setSelected(e.target.value), setStale(true))} className="h-12 rounded-xl border border-line bg-panel-2 px-3 outline-none focus:border-blue">
+        <select id="model" name="model" disabled={pending} value={selected} onChange={(e) => (setSelected(e.target.value), setStale(true))} className="h-12 rounded-xl border border-line bg-panel-2 px-3 outline-none focus:border-blue">
           {models.map((m) => (
             <option key={m} value={m}>{LABELS[m] ?? m}</option>
           ))}
