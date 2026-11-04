@@ -1,5 +1,5 @@
 "use client";
-import { useActionState, useState } from "react";
+import { startTransition, useActionState, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { saveSettingsAction, type SaveState } from "./actions";
 
@@ -12,11 +12,27 @@ const LABELS: Record<string, string> = {
 type Props = { models: string[]; model: string; keyHint: string | null; keySource: "settings" | "env" | null };
 
 export function SettingsForm({ models, model, keyHint, keySource }: Props) {
-  const [state, action, pending] = useActionState<SaveState, FormData>(saveSettingsAction, null);
+  // Controlled fields: React resets uncontrolled ones after every action, which would wipe a mistyped key.
+  const [apiKey, setApiKey] = useState("");
+  const [selected, setSelected] = useState(model);
+  const [stale, setStale] = useState(false);
+  const [state, action, pending] = useActionState<SaveState, FormData>(async (prev, form) => {
+    setStale(false);
+    const result = await saveSettingsAction(prev, form);
+    if (result?.ok) setApiKey("");
+    return result;
+  }, null);
   const [show, setShow] = useState(false);
 
   return (
-    <form action={action} className="flex flex-col gap-5 rounded-3xl border border-line bg-panel p-5 md:p-6">
+    <form
+      // onSubmit instead of `action`: a form action makes React reset the fields after every save.
+      onSubmit={(e) => {
+        e.preventDefault();
+        const data = new FormData(e.currentTarget);
+        startTransition(() => action(data));
+      }}
+      className="flex flex-col gap-5 rounded-3xl border border-line bg-panel p-5 md:p-6">
       <div className="flex flex-col gap-2">
         <label htmlFor="apiKey" className="font-semibold">Anthropic API key</label>
         <div className="flex gap-2">
@@ -24,6 +40,8 @@ export function SettingsForm({ models, model, keyHint, keySource }: Props) {
             id="apiKey"
             name="apiKey"
             type={show ? "text" : "password"}
+            value={apiKey}
+            onChange={(e) => (setApiKey(e.target.value), setStale(true))}
             autoComplete="off"
             spellCheck={false}
             placeholder={keyHint ? `Saved ${keyHint}` : "sk-ant-…"}
@@ -41,7 +59,7 @@ export function SettingsForm({ models, model, keyHint, keySource }: Props) {
 
       <div className="flex flex-col gap-2">
         <label htmlFor="model" className="font-semibold">Model</label>
-        <select id="model" name="model" defaultValue={model} className="h-12 rounded-xl border border-line bg-panel-2 px-3 outline-none focus:border-blue">
+        <select id="model" name="model" value={selected} onChange={(e) => (setSelected(e.target.value), setStale(true))} className="h-12 rounded-xl border border-line bg-panel-2 px-3 outline-none focus:border-blue">
           {models.map((m) => (
             <option key={m} value={m}>{LABELS[m] ?? m}</option>
           ))}
@@ -58,7 +76,7 @@ export function SettingsForm({ models, model, keyHint, keySource }: Props) {
           {pending ? "Checking…" : "Save"}
         </motion.button>
         <AnimatePresence mode="wait">
-          {state && (
+          {state && !stale && (
             <motion.p
               key={state.message}
               role="status"

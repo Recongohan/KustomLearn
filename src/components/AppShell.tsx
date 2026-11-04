@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { motion } from "motion/react";
+import { motion, MotionConfig } from "motion/react";
 import { useSyncExternalStore } from "react";
 
 const NAV = [
@@ -76,6 +76,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const active = (href: string) => (href === "/" ? path === "/" : path.startsWith(href));
 
   return (
+    <MotionConfig reducedMotion="user">
     <div className="min-h-dvh md:flex">
       <nav aria-label="Main" className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col border-r border-line bg-side px-3 py-6 md:flex">
         <Link href="/" className="px-2.5"><Logo /></Link>
@@ -116,5 +117,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </ul>
       </nav>
     </div>
+    </MotionConfig>
   );
 }

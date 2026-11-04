@@ -1,20 +1,28 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+
+let cachedKey: Buffer | undefined;
 
 // AES-256-GCM for secrets at rest (the user's API key). Key = APP_SECRET, or a generated local secret file.
 function key(): Buffer {
+  if (cachedKey) return cachedKey;
   let secret = process.env.APP_SECRET;
   if (!secret) {
     if (process.env.DATABASE_URL) throw new Error("APP_SECRET must be set when using a hosted database");
     const file = path.join(process.env.PGLITE_DIR && !process.env.PGLITE_DIR.startsWith("memory:") ? path.dirname(process.env.PGLITE_DIR) : path.join(process.cwd(), "data"), "app-secret");
-    if (!existsSync(file)) {
-      mkdirSync(path.dirname(file), { recursive: true });
-      writeFileSync(file, randomBytes(32).toString("base64"), { mode: 0o600 });
+    mkdirSync(path.dirname(file), { recursive: true });
+    try {
+      // "wx" fails if the file exists, so two processes starting together can't both write a secret.
+      writeFileSync(file, randomBytes(32).toString("base64"), { mode: 0o600, flag: "wx" });
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
     }
     secret = readFileSync(file, "utf8");
+    if (!secret) throw new Error(`${file} is empty; delete it to generate a new secret`);
   }
-  return createHash("sha256").update(secret).digest();
+  cachedKey = createHash("sha256").update(secret).digest();
+  return cachedKey;
 }
 
 export function encrypt(plain: string): string {

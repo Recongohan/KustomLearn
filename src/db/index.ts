@@ -31,7 +31,7 @@ export function getDb(): Promise<Db> {
   dbPromise ??= (
     process.env.DATABASE_URL
       ? connectNeon(process.env.DATABASE_URL)
-      : connectPglite(process.env.PGLITE_DIR ?? path.join(process.cwd(), "data", "pglite"))
+      : connectPglite(process.env.PGLITE_DIR || path.join(process.cwd(), "data", "pglite")) // ||: an empty value from .env means unset
   ).catch((err) => {
     dbPromise = undefined; // let the next request retry instead of caching the failure
     throw err;
