@@ -112,8 +112,8 @@ Objectives: ${m.objectives.join("; ")}`,
     },
     { ...opts, maxTokens },
   );
-  if (data.quiz.some((q) => q.choices.length < 2 || q.answer < 0 || q.answer >= q.choices.length)) {
-    throw new GenerationError("A quiz question has an invalid answer.", usage);
+  if (!data.quiz.length || data.quiz.some((q) => q.choices.length < 2 || q.answer < 0 || q.answer >= q.choices.length)) {
+    throw new GenerationError("The quiz is empty or has an invalid answer.", usage);
   }
   return { data, usage };
 }
