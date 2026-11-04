@@ -6,7 +6,10 @@ export const LOCAL_USER_ID = "local";
 const MIGRATIONS = path.join(process.cwd(), "drizzle");
 
 type Db = Awaited<ReturnType<typeof connectPglite>>;
-let dbPromise: Promise<Db> | undefined;
+
+// Next bundles route handlers, server actions and pages separately, so a module-level variable would exist once
+// per bundle. Two PGlite instances on one directory don't see each other's writes and can corrupt it: keep one per process.
+const store = globalThis as typeof globalThis & { __kustomlearnDb?: Promise<Db> };
 
 async function connectPglite(dataDir: string) {
   const { drizzle } = await import("drizzle-orm/pglite");
@@ -28,15 +31,15 @@ async function connectNeon(url: string) {
 
 /** One shared connection. DATABASE_URL set → Neon/Postgres, otherwise embedded PGlite in PGLITE_DIR. */
 export function getDb(): Promise<Db> {
-  dbPromise ??= (
+  store.__kustomlearnDb ??= (
     process.env.DATABASE_URL
       ? connectNeon(process.env.DATABASE_URL)
       : connectPglite(process.env.PGLITE_DIR || path.join(process.cwd(), "data", "pglite")) // ||: an empty value from .env means unset
   ).catch((err) => {
-    dbPromise = undefined; // let the next request retry instead of caching the failure
+    store.__kustomlearnDb = undefined; // let the next request retry instead of caching the failure
     throw err;
   });
-  return dbPromise;
+  return store.__kustomlearnDb;
 }
 
 export { schema };
