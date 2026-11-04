@@ -38,14 +38,16 @@ async function overCap(courseId: string): Promise<StepResult | null> {
   return { paused: true, reason };
 }
 
-async function charge(courseId: string, userId: string, model: PricedModel, usage: Usage, reason: string) {
-  const db = await getDb();
+type Tx = Parameters<Parameters<Awaited<ReturnType<typeof getDb>>["transaction"]>[0]>[0];
+
+// Runs in the same transaction as the content write, so a retried step can't skip its charge.
+async function charge(tx: Tx, courseId: string, userId: string, model: PricedModel, usage: Usage, reason: string) {
   const tokens = usage.inputTokens + usage.outputTokens;
-  await db
+  await tx
     .update(schema.courses)
     .set({ spentTokens: sql`${schema.courses.spentTokens} + ${tokens}`, spentMicros: sql`${schema.courses.spentMicros} + ${usage.costMicros}` })
     .where(eq(schema.courses.id, courseId));
-  await db.insert(schema.aiCalls).values({ userId, courseId, reason, model, ...usage });
+  await tx.insert(schema.aiCalls).values({ userId, courseId, reason, model, ...usage });
 }
 
 export async function runOutline(courseId: string): Promise<StepResult> {
@@ -59,8 +61,8 @@ export async function runOutline(courseId: string): Promise<StepResult> {
   await db.transaction(async (tx) => {
     await tx.insert(schema.modules).values(data.modules.map((m, i) => ({ courseId, position: i, title: m.title })));
     await tx.update(schema.courses).set({ plan: data, title: data.title }).where(eq(schema.courses.id, courseId));
+    await charge(tx, courseId, course.userId, model, usage, "Build the course outline");
   });
-  await charge(courseId, course.userId, model, usage, "Build the course outline");
   return { paused: false, modules: data.modules.length };
 }
 
@@ -77,8 +79,10 @@ export async function runModule(courseId: string, position: number): Promise<Ste
 
   const { apiKey, model } = await credentials(course.userId);
   const { data, usage } = await generateModule(briefOf(course), plan, position, { apiKey, model });
-  await db.update(schema.modules).set({ content: data }).where(eq(schema.modules.id, mod.id));
-  await charge(courseId, course.userId, model, usage, `Write module ${position + 1}: ${mod.title}`);
+  await db.transaction(async (tx) => {
+    await tx.update(schema.modules).set({ content: data }).where(eq(schema.modules.id, mod.id));
+    await charge(tx, courseId, course.userId, model, usage, `Write module ${position + 1}: ${mod.title}`);
+  });
   return { paused: false, modules: plan.modules.length };
 }
 
