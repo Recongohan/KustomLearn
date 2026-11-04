@@ -66,7 +66,11 @@ export async function importCourse(raw: string, userId: string, tz?: string): Pr
   const parsed = Bundle.safeParse(json);
   if (!parsed.success) return { ok: false, error: "That file isn't a KustomLearn course, or it's from a newer version." };
   const b = parsed.data;
-  if (b.modules.length !== b.course.plan.modules.length) return { ok: false, error: "That course is incomplete: its plan and levels don't match." };
+  const v = b.course.variation;
+  if (b.modules.length !== b.course.plan.modules.length || v.modules !== b.modules.length) return { ok: false, error: "That course is incomplete: its plan and levels don't match." };
+  // The numbers drive the schedule and branch estimates, so keep them in the range the app itself creates.
+  const inRange = (n: number, lo: number, hi: number) => n >= lo && n <= hi;
+  if (!inRange(v.weeks, 1, 104) || !inRange(v.hoursPerWeek, 1, 80) || ![v.labs.code, v.labs.terminal, v.labs.logs].every((n) => inRange(n, 0, 64))) return { ok: false, error: "That course has settings this app can't use." };
   // Terminal labs are graded by replaying commands here, so make sure each one still holds together.
   for (const m of b.modules) for (const lab of m.content.labs ?? []) if (lab.kind === "terminal" && !validateTerminalLab(lab).ok) return { ok: false, error: `The lab "${lab.title.slice(0, 80)}" is broken.` };
 

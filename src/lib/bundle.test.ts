@@ -54,6 +54,12 @@ describe(".kustom bundles", () => {
     const lab = badLab.modules.flatMap((m) => m.content.labs ?? []).find((l) => l.kind === "terminal")!;
     if (lab.kind === "terminal") lab.solution = ["nmap 10.0.0.1"];
     expect(await importCourse(JSON.stringify(badLab), "x")).toMatchObject({ ok: false, error: expect.stringContaining("broken") });
+    const zero = structuredClone(b);
+    zero.course.variation.modules = 0;
+    expect(await importCourse(JSON.stringify(zero), "x")).toMatchObject({ ok: false, error: expect.stringContaining("incomplete") });
+    const weeks = structuredClone(b);
+    weeks.course.variation.weeks = -3;
+    expect(await importCourse(JSON.stringify(weeks), "x")).toMatchObject({ ok: false });
     const short = { ...b, modules: b.modules.slice(0, 1) };
     expect(await importCourse(JSON.stringify(short), "x")).toMatchObject({ ok: false, error: expect.stringContaining("incomplete") });
   });
