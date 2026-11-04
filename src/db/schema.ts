@@ -26,6 +26,9 @@ export const courses = pgTable(
     plan: jsonb("plan"), // outline, frozen once ready
     budgetCapMicros: integer("budget_cap_micros"),
     spentMicros: integer("spent_micros").notNull().default(0),
+    budgetCapTokens: integer("budget_cap_tokens"), // the cap the learner approved; generation pauses here
+    spentTokens: integer("spent_tokens").notNull().default(0),
+    statusNote: text("status_note"), // why it paused or failed, shown to the learner
     parentCourseId: text("parent_course_id"),
     forkedAtModule: integer("forked_at_module"),
     createdAt: createdAt(),

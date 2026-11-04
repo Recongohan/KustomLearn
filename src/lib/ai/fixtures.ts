@@ -1,4 +1,35 @@
 import type { Intake } from "./intake";
+import type { ModuleContent, Outline } from "./generate";
+
+const FAKE_USAGE = { inputTokens: 5_000, outputTokens: 6_000 };
+
+export function fakeOutline(modules: number): { data: Outline; usage: typeof FAKE_USAGE } {
+  return {
+    data: {
+      title: "SOC Analyst from Zero",
+      modules: Array.from({ length: modules }, (_, i) => ({
+        title: `Module ${i + 1}: ${["Logs 101", "Windows events", "Brute force", "Lateral movement", "Detections", "Triage notes"][i % 6]}`,
+        summary: "What it is, why analysts care, and how to spot it.",
+        objectives: ["Explain the core idea", "Find it in real logs"],
+      })),
+    },
+    usage: FAKE_USAGE,
+  };
+}
+
+export function fakeModule(title: string): { data: ModuleContent; usage: typeof FAKE_USAGE } {
+  return {
+    data: {
+      sections: [
+        { heading: "Why it matters", markdown: `**${title}** shows up in almost every incident.` },
+        { heading: "Try it", markdown: "```bash\ngrep 'Failed password' /var/log/auth.log | wc -l\n```" },
+      ],
+      diagram: "flowchart LR\n  A[Alert] --> B[Triage] --> C{Real?}\n  C -->|yes| D[Escalate]\n  C -->|no| E[Close]",
+      quiz: [{ question: "Which Windows event ID is a failed logon?", choices: ["4624", "4625", "4688", "4720"], answer: 1, explanation: "4625 records a failed logon attempt." }],
+    },
+    usage: FAKE_USAGE,
+  };
+}
 
 /** Deterministic intake for tests and KL_FAKE_AI=1 (no API key, no cost). */
 export function fakeIntake(request: string): Intake {

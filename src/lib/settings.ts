@@ -48,6 +48,12 @@ export async function getApiKey(userId = currentUserId()): Promise<string | unde
   return savedKey ?? process.env.ANTHROPIC_API_KEY;
 }
 
+/** Key and model for background jobs, which run outside a request. Server-only. */
+export async function getAiCredentials(userId: string): Promise<{ apiKey: string | undefined; model: Model }> {
+  const { row, savedKey } = await readRow(userId);
+  return { apiKey: savedKey ?? process.env.ANTHROPIC_API_KEY, model: (row?.model ?? MODELS[0]) as Model };
+}
+
 export async function saveSettings(values: { apiKey?: string; model: Model }, userId = currentUserId()) {
   const db = await getDb();
   const apiKeyEnc = values.apiKey ? encrypt(values.apiKey) : undefined;

@@ -1,5 +1,5 @@
 import { serve } from "inngest/next";
 import { inngest } from "@/inngest/client";
+import { functions } from "@/inngest/functions";
 
-// Generation functions are registered here from milestone 3.
-export const { GET, POST, PUT } = serve({ client: inngest, functions: [] });
+export const { GET, POST, PUT } = serve({ client: inngest, functions });
