@@ -3,6 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import type { Variation } from "./intake";
+import { LogsLab, type StoredLab } from "../labs/types";
 import { billedUsage, fallbackParams, type PricedModel } from "./pricing";
 
 export const Outline = z.object({
@@ -15,8 +16,11 @@ export const ModuleContent = z.object({
   sections: z.array(z.object({ heading: z.string(), markdown: z.string() })),
   diagram: z.string(), // Mermaid source, or "" when a diagram wouldn't help
   quiz: z.array(z.object({ question: z.string(), choices: z.array(z.string()), answer: z.number().int(), explanation: z.string() })),
+  labs: z.array(LogsLab),
 });
-export type ModuleContent = z.infer<typeof ModuleContent>;
+type GeneratedModule = z.infer<typeof ModuleContent>;
+/** A module as stored: its labs validated and carrying their reference result. Courses from before labs have none. */
+export type ModuleContent = Omit<GeneratedModule, "labs"> & { labs?: StoredLab[] };
 
 export type CourseBrief = { intent: string; category: string; request: string; variation: Variation };
 export type Usage = { inputTokens: number; outputTokens: number; costMicros: number };
@@ -27,7 +31,14 @@ export class GenerationError extends Error {
   }
 }
 
-export const STEP_MAX_OUTPUT = { outline: 6000, module: 16000 };
+export const STEP_MAX_OUTPUT = { outline: 6000, module: 16000, repair: 8000 };
+
+const LAB_RULES = `Each lab is graded by running the learner's SQL and comparing its rows with your solution's rows, so:
+  setup: Postgres SQL that creates 1-3 log tables and inserts 30-200 rows of realistic synthetic logs (timestamps, hosts, users, IPs, event IDs) with the pattern to find hidden among normal noise. Plain CREATE TABLE and INSERT, or generate_series; nothing else.
+  task: markdown that names the tables and asks one question a single SELECT answers ("Which IPs failed to log in more than 5 times?").
+  solution: that single SELECT; it must return between 1 and 50 rows. starter: a partial query that does not answer it yet.
+  hints: exactly 3, from a nudge to nearly the answer, never the full query. walkthrough: why the solution works.
+  ordered: true only if the task asks for a specific order.`;
 type Opts = { apiKey: string; model: PricedModel; maxTokens?: number };
 
 const SYSTEM = `You write courses for KustomLearn, a hands-on, gamified learning app for CS, IT and tech.
@@ -90,10 +101,11 @@ export async function generateModule(
   c: CourseBrief,
   outline: Outline,
   index: number,
+  labs: number,
   opts: Opts,
-): Promise<{ data: ModuleContent; usage: Usage }> {
+): Promise<{ data: GeneratedModule; usage: Usage }> {
   const maxTokens = Math.min(STEP_MAX_OUTPUT.module, opts.maxTokens ?? Infinity);
-  if (process.env.KL_FAKE_AI === "1") return (await import("./fixtures")).fakeModule(outline.modules[index].title, maxTokens);
+  if (process.env.KL_FAKE_AI === "1") return (await import("./fixtures")).fakeModule(outline.modules[index].title, maxTokens, labs);
   const m = outline.modules[index];
   const { data, usage } = await call(
     ModuleContent,
@@ -106,9 +118,11 @@ ${outline.modules.map((x, i) => `${i + 1}. ${x.title}: ${x.summary}`).join("\n")
 Module format:
 - sections: 3-5 lesson sections in GitHub-flavored markdown, with code blocks or commands where they help.
 - diagram: one Mermaid flowchart or sequence diagram if it makes an idea clearer, otherwise "".
-- quiz: 4-6 multiple-choice questions with 4 choices each; answer is the 0-based index; explanation says why.`,
+- quiz: 4-6 multiple-choice questions with 4 choices each; answer is the 0-based index; explanation says why.
+- labs: the number of log investigation labs the task asks for (often 0). ${LAB_RULES}`,
       task: `Write module ${index + 1}: "${m.title}". ${m.summary}
-Objectives: ${m.objectives.join("; ")}`,
+Objectives: ${m.objectives.join("; ")}
+Labs: exactly ${labs} log investigation lab${labs === 1 ? "" : "s"}.`,
     },
     { ...opts, maxTokens },
   );
@@ -116,4 +130,21 @@ Objectives: ${m.objectives.join("; ")}`,
     throw new GenerationError("The quiz is empty or has an invalid answer.", usage);
   }
   return { data, usage };
+}
+
+/** Asks for a fixed version of a lab whose reference solution failed validation. */
+export async function repairLab(c: CourseBrief, lab: LogsLab, error: string, opts: Opts): Promise<{ data: LogsLab; usage: Usage }> {
+  const maxTokens = Math.min(STEP_MAX_OUTPUT.repair, opts.maxTokens ?? Infinity);
+  if (process.env.KL_FAKE_AI === "1") return (await import("./fixtures")).fakeRepair(lab, maxTokens);
+  return call(
+    LogsLab,
+    `${brief(c)}
+
+This log investigation lab failed its check: ${error}.
+Return a corrected lab that keeps the same idea. ${LAB_RULES}
+
+The lab:
+${JSON.stringify(lab)}`,
+    { ...opts, maxTokens },
+  );
 }

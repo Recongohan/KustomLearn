@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { Diagram } from "@/components/player/Diagram";
+import { LogLab } from "@/components/player/LogLab";
 import { Markdown } from "@/components/player/Markdown";
 import { Quiz } from "@/components/player/Quiz";
 import { playModule } from "@/lib/player";
@@ -33,6 +34,10 @@ async function Module({ params }: { params: Promise<{ id: string; n: string }> }
           <Markdown>{s.markdown}</Markdown>
           {i === 0 && m.diagram && <Diagram source={m.diagram} title={m.title} />}
         </section>
+      ))}
+
+      {m.labs.map((lab, k) => (
+        <LogLab key={k} courseId={id} position={position} index={k} lab={lab} />
       ))}
 
       <Quiz courseId={id} position={position} questions={m.quiz} best={m.best.stars} />

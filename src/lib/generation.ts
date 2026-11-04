@@ -1,7 +1,9 @@
 import "server-only";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { getDb, schema } from "@/db";
-import { GenerationError, STEP_MAX_OUTPUT, generateModule, generateOutline, type CourseBrief, type Outline, type Usage } from "./ai/generate";
+import { GenerationError, STEP_MAX_OUTPUT, generateModule, generateOutline, repairLab, type CourseBrief, type ModuleContent, type Outline, type Usage } from "./ai/generate";
+import type { LogsLab, StoredLab } from "./labs/types";
+import { validateLab } from "./labs/validate";
 import { IN_PER_CALL } from "./estimate";
 import type { Variation } from "./ai/intake";
 import { writerFor, type PricedModel } from "./ai/pricing";
@@ -111,16 +113,62 @@ export async function runModule(courseId: string, position: number): Promise<Ste
   const reason = `Write module ${position + 1}: ${mod.title}`;
   let result;
   try {
-    result = await generateModule(briefOf(course), plan, position, { apiKey, model, maxTokens: room });
+    result = await generateModule(briefOf(course), plan, position, labsFor(course, position), { apiKey, model, maxTokens: room });
   } catch (err) {
     return chargeFailure(err, course, model, room, STEP_MAX_OUTPUT.module, reason);
   }
   const { data, usage } = result;
+  const labs: StoredLab[] = [];
+  for (const [k, lab] of data.labs.entries()) {
+    const ok = await checkOrRepair(course, model, lab, `${reason}, lab ${k + 1}`, usage.inputTokens + usage.outputTokens);
+    if (ok) labs.push(ok);
+  }
+  const content: ModuleContent = { ...data, labs };
   await db.transaction(async (tx) => {
-    await tx.update(schema.modules).set({ content: data }).where(eq(schema.modules.id, mod.id));
+    await tx.update(schema.modules).set({ content }).where(eq(schema.modules.id, mod.id));
     await charge(tx, courseId, course.userId, model, usage, reason);
   });
   return { paused: false, modules: plan.modules.length };
+}
+
+/** Spreads the variation's log labs evenly over the modules. */
+export function labsFor(course: typeof schema.courses.$inferSelect, position: number): number {
+  const v = course.variation as Variation;
+  const total = v.labs.logs; // shortcut: code and terminal labs arrive with their engines (milestone 5, slices 2 and 3)
+  return Math.floor(((position + 1) * total) / v.modules) - Math.floor((position * total) / v.modules);
+}
+
+const REPAIRS = 2;
+
+/**
+ * Runs a lab's reference solution against its own data; a failing lab is repaired up to twice within the cap.
+ * Repairs are charged as they happen. A lab still broken after that is dropped, so the course stays playable.
+ */
+async function checkOrRepair(course: typeof schema.courses.$inferSelect, model: PricedModel, lab: LogsLab, reason: string, pending: number): Promise<StoredLab | null> {
+  const { apiKey } = await credentials(course.userId);
+  let current = lab;
+  for (let attempt = 0; ; attempt++) {
+    const check = await validateLab(current);
+    if (check.ok) return { ...current, kind: "logs", expected: check.expected };
+    if (attempt >= REPAIRS) return null;
+    const fresh = (await loadCourse(course.id)).course;
+    // `pending`: the module's own tokens, charged only once the whole step is saved.
+    const room = roomLeft({ ...fresh, spentTokens: fresh.spentTokens + pending });
+    if (room == null) return null; // no budget left to repair: drop the lab rather than pass the cap
+    try {
+      const fixed = await repairLab(briefOf(fresh), current, check.error, { apiKey, model, maxTokens: room });
+      const db = await getDb();
+      await db.transaction((tx) => charge(tx, course.id, course.userId, model, fixed.usage, `Repair ${reason}`));
+      current = fixed.data;
+    } catch (err) {
+      if (err instanceof GenerationError && err.usage) {
+        const db = await getDb();
+        const usage = err.usage;
+        await db.transaction((tx) => charge(tx, course.id, course.userId, model, usage, `Repair ${reason} (incomplete)`));
+      }
+      return null;
+    }
+  }
 }
 
 export async function finalize(courseId: string) {
