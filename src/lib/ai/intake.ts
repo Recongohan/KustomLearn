@@ -2,7 +2,7 @@ import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
-import type { PricedModel } from "./pricing";
+import { billedUsage, type PricedModel } from "./pricing";
 
 export const Variation = z.object({
   name: z.string(),
@@ -38,7 +38,7 @@ Given the learner's description:
   capstone (a final multi-step project), outcomes (exactly 3 short, concrete things they will be able to do).
 Respect any time, level or goal the learner states. Match the learner's own words where you can.`;
 
-export type IntakeResult = { intake: Intake; inputTokens: number; outputTokens: number };
+export type IntakeResult = { intake: Intake; inputTokens: number; outputTokens: number; costMicros: number };
 
 export class IntakeError extends Error {}
 
@@ -63,7 +63,7 @@ export function normalize(intake: Intake): Intake {
 export async function understand(request: string, opts: { apiKey: string; model: PricedModel }): Promise<IntakeResult> {
   if (process.env.KL_FAKE_AI === "1") {
     const { fakeIntake } = await import("./fixtures");
-    return { intake: fakeIntake(request), inputTokens: 0, outputTokens: 0 };
+    return { intake: fakeIntake(request), inputTokens: 0, outputTokens: 0, costMicros: 0 };
   }
 
   const client = new Anthropic({ apiKey: opts.apiKey, timeout: 90_000 });
@@ -80,5 +80,5 @@ export async function understand(request: string, opts: { apiKey: string; model:
   if (!res.parsed_output) throw new IntakeError("Couldn't understand that. Try again in a moment.");
   const intake = normalize(res.parsed_output);
   if (intake.inScope && intake.variations.length !== 3) throw new IntakeError("Couldn't build three options. Try again.");
-  return { intake, inputTokens: res.usage.input_tokens, outputTokens: res.usage.output_tokens };
+  return { intake, ...billedUsage(res.usage, opts.model) };
 }

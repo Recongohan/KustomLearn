@@ -4,7 +4,6 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { getDb, schema } from "@/db";
 import { understand, IntakeError, Variation, type Intake } from "@/lib/ai/intake";
-import { costMicros } from "@/lib/ai/pricing";
 import { estimate } from "@/lib/estimate";
 import { currentUserId, getApiKey, getSettings } from "@/lib/settings";
 
@@ -23,10 +22,9 @@ export async function understandAction(raw: string): Promise<UnderstandState> {
   if (!apiKey && process.env.KL_FAKE_AI !== "1") return { ok: false, message: "Add your Anthropic key in Settings first." };
 
   try {
-    const { intake, inputTokens, outputTokens } = await understand(parsed.data, { apiKey: apiKey ?? "", model });
-    const cost = costMicros(model, inputTokens, outputTokens);
+    const { intake, inputTokens, outputTokens, costMicros } = await understand(parsed.data, { apiKey: apiKey ?? "", model });
     const db = await getDb();
-    await db.insert(schema.aiCalls).values({ userId, reason: "Understand what you want to learn", model, inputTokens, outputTokens, costMicros: cost });
+    await db.insert(schema.aiCalls).values({ userId, reason: "Understand what you want to learn", model, inputTokens, outputTokens, costMicros });
     return { ok: true, request: parsed.data, intake, tokens: inputTokens + outputTokens };
   } catch (err) {
     if (err instanceof IntakeError) return { ok: false, message: err.message };
