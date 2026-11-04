@@ -58,7 +58,7 @@ export const progress = pgTable(
     stars: integer("stars").notNull().default(0),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [primaryKey({ columns: [t.userId, t.itemId] })],
+  (t) => [primaryKey({ columns: [t.userId, t.courseId, t.itemId] })], // item ids repeat across courses and forks
 );
 
 export const gameState = pgTable("game_state", {

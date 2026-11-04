@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { motion } from "motion/react";
+import { motion, MotionConfig } from "motion/react";
 import { Suspense, useSyncExternalStore } from "react";
 
 const NAV = [
@@ -128,6 +128,7 @@ const withPath = (render: (path: string | null) => React.ReactNode) => (
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   return (
+    <MotionConfig reducedMotion="user">
     <div className="min-h-dvh md:flex">
       <nav aria-label="Main" className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col border-r border-line bg-side px-3 py-6 md:flex">
         <Link href="/" className="px-2.5"><Logo /></Link>
@@ -146,5 +147,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {withPath((path) => <TabLinks path={path} />)}
       </nav>
     </div>
+    </MotionConfig>
   );
 }

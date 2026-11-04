@@ -16,7 +16,7 @@ services:
   inngest:
     image: inngest/inngest:v1.49.0
     command: inngest dev -u http://app:3000/api/inngest --no-discovery
-    ports: ["8288:8288"]
+    ports: ["127.0.0.1:8288:8288"] # dev UI has no auth; keep it off public interfaces
     restart: unless-stopped
 
 volumes:

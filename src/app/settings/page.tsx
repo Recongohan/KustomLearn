@@ -12,7 +12,7 @@ export default function SettingsPage() {
     <div className="mx-auto flex max-w-2xl flex-col gap-6">
       <header>
         <h1 className="font-display text-4xl font-extrabold tracking-tight">Settings</h1>
-        <p className="mt-2 text-muted">Your key is encrypted and stays on this machine. It is only used when you build a course.</p>
+        <p className="mt-2 text-muted">Your key is encrypted before it is stored and never sent back to your browser. It is only used when you build a course.</p>
       </header>
       <Suspense fallback={<div className="h-72 animate-pulse rounded-3xl bg-panel" />}>
         <Form />

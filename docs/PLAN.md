@@ -18,7 +18,7 @@ Each milestone ships something runnable and is merged through a PR (CodeRabbit r
 ## Ways to run
 - **Local:** `npm install && npm run dev` starts the app and the Inngest dev server. Add your key in Settings.
 - **Docker:** `docker compose up` brings up the app plus the Inngest dev server, with PGlite data in a volume.
-- **Cloud:** the same image with `DATABASE_URL` (Neon), the Inngest keys, and optionally Clerk and Sentry.
+- **Cloud:** the same image with `DATABASE_URL` (Neon), `APP_SECRET`, the Inngest keys, and optionally Clerk and Sentry.
 - **CI:** GitHub Actions runs lint, typecheck, unit tests, build and a Docker build on every PR. On `main`, it pushes the image to GHCR.
 
 ## Milestones
