@@ -6,7 +6,7 @@ import type { Variation } from "./ai/intake";
 import { gradeCode, gradeResult } from "./labs/grade";
 import { replay, runChecks } from "./labs/shell";
 import { isBoss, itemXp } from "./game";
-import { award } from "./gameplay";
+import { award, recordClear } from "./gameplay";
 import type { LabTest, PublicLab, ResultSet, StoredLab } from "./labs/types";
 
 // The course player. Grading is deterministic and runs here; quiz answers never reach the browser before a submit.
@@ -183,6 +183,7 @@ export async function submitQuiz(courseId: string, userId: string, position: num
     .onConflictDoUpdate({ target: [schema.progress.userId, schema.progress.courseId, schema.progress.itemId], set: values });
 
   const xp = await award(userId, `quiz:${courseId}:${id}:${best}`, "quiz", itemXp("quiz", best) - itemXp("quiz", prev?.stars ?? 0));
+  if (graded.passed) await recordClear(userId, "quiz", `quiz:${courseId}:${id}`);
   return {
     ...graded,
     stars,
@@ -284,6 +285,7 @@ export async function labSubmit(courseId: string, userId: string, position: numb
   const levelDone = !!map?.modules[position]?.done;
   const boss = isBoss(position, map?.modules.length ?? 1, k, ctx.labs);
   const xp = await award(userId, `lab:${courseId}:${ctx.item}:${best}`, "lab", itemXp("lab", best, boss) - itemXp("lab", ctx.row?.stars ?? 0, boss));
+  if (passed) await recordClear(userId, "lab", `lab:${courseId}:${ctx.item}`);
   return {
     tests,
     passed,

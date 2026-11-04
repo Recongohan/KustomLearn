@@ -78,4 +78,13 @@ describe("gameplay", () => {
     expect(await studyBeat(U)).toBe(2);
     expect((await gameSummary(U)).goal.minutes).toBe(2);
   });
+
+  it("counts a re-clear for quests and the chest, but not a chest claim as study", async () => {
+    const db = await getDb();
+    expect((await submitQuiz(id, U, 0, [1]))!.xp).toBe(0); // already paid
+    const keys = (await db.select().from(schema.xpEvents).where(eq(schema.xpEvents.userId, U))).map((e) => e.key);
+    expect(keys).toContain(`quiz:${id}:module-0:clear:${today}`);
+    await award("u2", "chest:2026-01-05", "chest", 300); // a chest on its own isn't a study day
+    expect((await gameSummary("u2")).streak).toMatchObject({ days: 0, studiedToday: false });
+  });
 });
