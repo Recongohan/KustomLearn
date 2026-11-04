@@ -76,7 +76,7 @@ export function Quiz({ courseId, position, questions, best }: Props) {
     <section aria-labelledby="quiz-h" className="flex flex-col gap-5 rounded-3xl border border-line bg-panel p-5 md:p-6">
       <div className="flex items-center gap-4">
         <h2 id="quiz-h" className="font-display text-2xl font-extrabold">Quiz</h2>
-        {!result && (
+        {!result && q && (
           <div className="flex flex-1 items-center gap-3">
             <div className="h-3 flex-1 overflow-hidden rounded-full bg-track" role="progressbar" aria-label="Quiz progress" aria-valuemin={0} aria-valuemax={questions.length} aria-valuenow={answers.length}>
               <motion.div className="h-full rounded-full bg-green" animate={{ width: `${(answers.length / questions.length) * 100}%` }} transition={spring} />
@@ -116,6 +116,14 @@ export function Quiz({ courseId, position, questions, best }: Props) {
                 World map
               </Link>
             </div>
+          </motion.div>
+        ) : !q ? (
+          // A course built before empty quizzes were rejected: let the learner clear the level after reading it.
+          <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-start gap-4">
+            <p className="text-muted">This level has no quiz questions.</p>
+            <button type="button" onClick={next} disabled={pending} className="h-14 rounded-2xl bg-green px-7 text-lg font-bold text-[#06281a] shadow-[0_4px_0_#1a9a62] transition-transform hover:-translate-y-px active:translate-y-0.5 disabled:opacity-60">
+              {pending ? "Saving…" : "Finish level"}
+            </button>
           </motion.div>
         ) : (
           <motion.div key={index} initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -24 }} transition={spring} className="flex flex-col gap-4">

@@ -87,4 +87,13 @@ describe("player", () => {
     expect(map.modules.map((m) => [m.done, m.stars, m.unlocked])).toEqual([[true, 1, true], [false, 0, true], [false, 0, false]]);
     expect((await submitQuiz(id, "local", 1, [1]))!).toMatchObject({ stars: 3, next: 2 });
   });
+
+  it("lets a level with an empty quiz be cleared after reading", async () => {
+    const db = await getDb();
+    const { and, eq } = await import("drizzle-orm");
+    const [m] = await db.select().from(schema.modules).where(and(eq(schema.modules.courseId, id), eq(schema.modules.position, 2)));
+    await db.update(schema.modules).set({ content: { ...(m.content as object), quiz: [] } }).where(eq(schema.modules.id, m.id));
+    expect((await playModule(id, "local", 2))!.quiz).toEqual([]);
+    expect(await submitQuiz(id, "local", 2, [])).toMatchObject({ passed: true, next: null });
+  });
 });
