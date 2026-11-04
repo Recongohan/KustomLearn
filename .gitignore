@@ -1,0 +1,7 @@
+node_modules/
+.next/
+.env*
+!.env.example
+*.db
+.taste-skill/
+.DS_Store
