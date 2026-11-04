@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { validateLab } from "./validate";
+import { validateLab, validateTerminalLab } from "./validate";
+import { FAKE_TERMINAL_LAB } from "../ai/fixtures";
 import { gradeResult } from "./grade";
 
 const lab = {
@@ -97,4 +98,13 @@ describe("code lab validation", () => {
     expect(values[2]).toBe('"blocked"');
     expect(values[3]).toBe('"blocked"');
   }, 60_000);
+
+  it("accepts a terminal lab whose solution turns every check green, and rejects broken ones", () => {
+    const t = FAKE_TERMINAL_LAB;
+    expect(validateTerminalLab(t)).toEqual({ ok: true });
+    expect(validateTerminalLab({ ...t, solution: ["mkdir case", "awk '{print $12}' /var/log/auth.log > case/ips.txt"] })).toMatchObject({ ok: false, error: expect.stringContaining("command not found") });
+    expect(validateTerminalLab({ ...t, solution: ["mkdir case"] })).toMatchObject({ ok: false, error: expect.stringContaining("still fails") });
+    expect(validateTerminalLab({ ...t, checks: [{ name: "log there", kind: "exists", path: "/var/log/auth.log", text: "" }] })).toMatchObject({ ok: false, error: expect.stringContaining("already passes") });
+    expect(validateTerminalLab({ ...t, files: [{ path: "relative.txt", content: "" }] })).toMatchObject({ ok: false });
+  });
 });

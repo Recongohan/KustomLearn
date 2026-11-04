@@ -25,6 +25,7 @@
     "next": "16.4.5",
     "pyodide": "^314.0.7",
     "quickjs-emscripten-core": "^0.32.0",
+    "re2js": "^2.9.1",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-markdown": "^10.1.0",

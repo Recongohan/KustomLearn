@@ -44,10 +44,11 @@ type HelpProps = {
   onHint: () => void;
   onReveal: () => void;
   onUse: (code: string) => void;
+  useLabel?: string;
 };
 
 /** Tiered hints, then the solution with its walkthrough once it unlocks. */
-export function LabHelp({ hints, total, canSolve, solution, done, pending, onHint, onReveal, onUse }: HelpProps) {
+export function LabHelp({ hints, total, canSolve, solution, done, pending, onHint, onReveal, onUse, useLabel = "Put it in the editor" }: HelpProps) {
   return (
     <div className="flex flex-col gap-2">
       <AnimatePresence initial={false}>
@@ -75,7 +76,7 @@ export function LabHelp({ hints, total, canSolve, solution, done, pending, onHin
           <p className="font-semibold">Solution</p>
           <pre className="overflow-x-auto text-sm"><code>{solution.solution}</code></pre>
           <Markdown>{solution.walkthrough}</Markdown>
-          <button type="button" onClick={() => onUse(solution.solution)} className="min-h-11 w-fit rounded-xl border border-line px-4 text-sm font-semibold">Put it in the editor</button>
+          <button type="button" onClick={() => onUse(solution.solution)} className="min-h-11 w-fit rounded-xl border border-line px-4 text-sm font-semibold">{useLabel}</button>
         </motion.div>
       )}
     </div>

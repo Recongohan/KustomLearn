@@ -26,6 +26,7 @@ const Lab = Where.extend({ lab: z.number().int().min(0).max(16) });
 const Answer = z.union([
   z.object({ rows: z.object({ columns: z.array(z.string().max(200)).max(50), rows: z.array(z.array(z.string().max(2000).nullable()).max(50)).max(1000) }) }),
   z.object({ values: z.array(z.string().max(20_000).nullable()).max(12) }), // a code lab's return values, one per test
+  z.object({ commands: z.array(z.string().max(2000)).max(300) }), // a terminal session, replayed on the server
 ]);
 
 export async function labHintAction(courseId: string, position: number, lab: number) {

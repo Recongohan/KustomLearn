@@ -89,4 +89,17 @@ describe("shell simulator", () => {
     const bad = replay(files, ["mkdir report", "cat /var/log/auth.log > report/failed.txt"]);
     expect(runChecks(bad.sh, checks, bad.lastOutput).map((c) => c.pass)).toEqual([true, true, false, true]);
   });
+
+  it("keeps hostile sessions bounded: no regex blowup, no runaway copies", () => {
+    const sh = createShell([{ path: "/a.txt", content: "a".repeat(5_000) + "!\n" }]);
+    const t = Date.now();
+    expect(exec(sh, "grep -c '(a+)+$' /a.txt").out).toBe("0\n"); // hangs a backtracking engine
+    expect(exec(sh, "grep -o 'a\\+!' /a.txt").code).toBe(1); // RE2 syntax, not BRE: \\+ is a literal plus
+    expect(Date.now() - t).toBeLessThan(1_000);
+    exec(sh, "mkdir d && cat /a.txt /a.txt /a.txt /a.txt > d/f");
+    const r = replay([{ path: "/home/learner/d/f", content: "x".repeat(400_000) }], Array(20).fill("cp -r d d2 && mv d2 d/sub"));
+    let total = 0;
+    for (const n of r.sh.fs.values()) if (n.type === "file") total += n.content.length;
+    expect(total).toBeLessThanOrEqual(2_000_000);
+  });
 });

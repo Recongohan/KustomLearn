@@ -7,6 +7,7 @@ import { CodeLab } from "@/components/player/CodeLab";
 import { LogLab } from "@/components/player/LogLab";
 import { Markdown } from "@/components/player/Markdown";
 import { Quiz } from "@/components/player/Quiz";
+import { TerminalLab } from "@/components/player/TerminalLab";
 import { playModule } from "@/lib/player";
 import { currentUserId } from "@/lib/settings";
 
@@ -42,7 +43,9 @@ async function Module({ params }: { params: Promise<{ id: string; n: string }> }
           <LogLab key={k} courseId={id} position={position} index={k} lab={lab} />
         ) : lab.kind === "code" ? (
           <CodeLab key={k} courseId={id} position={position} index={k} lab={lab} />
-        ) : null, // terminal labs: TerminalLab component lands with slice 3
+        ) : (
+          <TerminalLab key={k} courseId={id} position={position} index={k} lab={lab} />
+        ),
       )}
 
       <Quiz courseId={id} position={position} questions={m.quiz} best={m.best.stars} />

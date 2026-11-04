@@ -4,7 +4,8 @@ import { gradeResult, toResultSet } from "./grade";
 import { IDENT, canonical, runJs } from "./harness";
 import { getQuickJS } from "./quickjs-node";
 import { runPython } from "./run-python";
-import type { CodeLab, CodeOutcome, LogsLab, ResultSet } from "./types";
+import { COMMANDS, createShell, exec, runChecks } from "./shell";
+import type { CodeLab, CodeOutcome, LogsLab, ResultSet, TerminalLab } from "./types";
 
 const TIMEOUT_MS = 10_000;
 const MAX_SETUP = 60_000; // characters of SQL
@@ -118,4 +119,29 @@ export function safeCanonical(v: string): string | null {
   } catch {
     return null;
   }
+}
+
+const COMMAND_LIST = COMMANDS.join(", ");
+const MAX_TERM_FILES = 40;
+const MAX_TERM_BYTES = 200_000; // characters across all starting files
+
+/** Replays the reference commands in the simulator: every one must run, and the checks must go from failing to passing. */
+export function validateTerminalLab(lab: TerminalLab): { ok: true } | { ok: false; error: string } {
+  if (!lab.files.length || lab.files.length > MAX_TERM_FILES) return { ok: false, error: `it needs between 1 and ${MAX_TERM_FILES} starting files` };
+  if (lab.files.some((f) => !f.path.startsWith("/"))) return { ok: false, error: "every file path must be absolute" };
+  if (lab.files.reduce((n, f) => n + f.content.length, 0) > MAX_TERM_BYTES) return { ok: false, error: "the starting files are too large" };
+  if (!lab.solution.length || lab.solution.length > 30 || lab.solution.some((c) => c.length > 500)) return { ok: false, error: "the solution needs 1-30 commands of at most 500 characters" };
+  if (!lab.checks.length || lab.checks.length > 8) return { ok: false, error: "it needs between 1 and 8 checks" };
+  if (lab.hints.length < 1) return { ok: false, error: "it has no hints" };
+  const sh = createShell(lab.files);
+  let last = "";
+  for (const c of lab.solution) {
+    const r = exec(sh, c);
+    if (r.code === 127 || r.err.startsWith("bash:")) return { ok: false, error: `the solution command "${c}" failed: ${r.err.trim()} (supported commands: ${COMMAND_LIST})` };
+    if (c.trim()) last = r.out;
+  }
+  const failed = runChecks(sh, lab.checks, last).find((t) => !t.pass);
+  if (failed) return { ok: false, error: `after the solution, check "${failed.name}" still fails` };
+  if (runChecks(createShell(lab.files), lab.checks, "").every((t) => t.pass)) return { ok: false, error: "every check already passes on the starting files" };
+  return { ok: true };
 }

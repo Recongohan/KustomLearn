@@ -1,7 +1,7 @@
 import { costMicros } from "./pricing";
 import type { Intake } from "./intake";
 import { GenerationError, type Outline } from "./generate";
-import type { CodeLab, LogsLab } from "../labs/types";
+import type { CodeLab, LogsLab, TerminalLab } from "../labs/types";
 import type { LabCounts } from "./generate";
 
 const FAKE_USAGE = { inputTokens: 5_000, outputTokens: 6_000, costMicros: costMicros("claude-opus-5-5", 5_000, 6_000) };
@@ -28,7 +28,7 @@ export function fakeOutline(modules: number, maxTokens: number): { data: Outline
   };
 }
 
-export function fakeModule(title: string, maxTokens: number, labs: LabCounts = { logs: 0, code: 0 }) {
+export function fakeModule(title: string, maxTokens: number, labs: LabCounts = { logs: 0, code: 0, terminal: 0 }) {
   fakeLimit(maxTokens);
   return {
     data: {
@@ -40,6 +40,7 @@ export function fakeModule(title: string, maxTokens: number, labs: LabCounts = {
       quiz: [{ question: "Which Windows event ID is a failed logon?", choices: ["4624", "4625", "4688", "4720"], answer: 1, explanation: "4625 records a failed logon attempt." }],
       labs: Array.from({ length: labs.logs }, () => ({ ...FAKE_LAB, solution: "select attacker_ip from auth_log" })), // broken until repaired
       codeLabs: Array.from({ length: labs.code }, (_, i) => (i % 2 ? FAKE_JS_LAB : FAKE_PY_LAB)),
+      terminalLabs: Array.from({ length: labs.terminal }, () => FAKE_TERMINAL_LAB),
     },
     usage: FAKE_USAGE,
   };
@@ -78,9 +79,9 @@ from generate_series(1, 14) n;`,
   ordered: false,
 };
 
-export function fakeRepair<L extends LogsLab | CodeLab>(lab: L, maxTokens: number) {
+export function fakeRepair<L extends LogsLab | CodeLab | TerminalLab>(lab: L, maxTokens: number) {
   fakeLimit(maxTokens);
-  return { data: { ...lab, solution: "entry" in lab ? lab.solution : FAKE_LAB.solution }, usage: FAKE_USAGE };
+  return { data: { ...lab, solution: "entry" in lab || "checks" in lab ? lab.solution : FAKE_LAB.solution }, usage: FAKE_USAGE };
 }
 
 export const FAKE_PY_LAB: CodeLab = {
@@ -113,5 +114,31 @@ export const FAKE_JS_LAB: CodeLab = {
     { name: "public address", args: '["203.0.113.7"]' },
     { name: "private address", args: '["10.0.0.42"]' },
     { name: "loopback", args: '["127.0.0.1"]' },
+  ],
+};
+
+export const FAKE_TERMINAL_LAB: TerminalLab = {
+  title: "Pull the attacker's IP",
+  task: "`/var/log/auth.log` holds a night of SSH logins. Save every source IP with a failed password, once each and sorted, to `~/case/ips.txt`.",
+  files: [
+    {
+      path: "/var/log/auth.log",
+      content:
+        "Nov  2 03:00:01 web-01 sshd[811]: Failed password for root from 203.0.113.7 port 52110 ssh2\n" +
+        "Nov  2 03:00:04 web-01 sshd[812]: Accepted password for amy from 10.0.0.2 port 40112 ssh2\n" +
+        "Nov  2 03:00:09 web-01 sshd[813]: Failed password for admin from 203.0.113.7 port 52114 ssh2\n" +
+        "Nov  2 03:01:12 web-01 sshd[820]: Failed password for bob from 198.51.100.23 port 61002 ssh2\n" +
+        "Nov  2 03:02:40 web-01 sshd[826]: Accepted password for cat from 10.0.0.5 port 40190 ssh2\n",
+    },
+    { path: "/home/learner/README.txt", content: "Put your findings in ~/case.\n" },
+  ],
+  solution: ["mkdir case", "grep 'Failed password' /var/log/auth.log | cut -d' ' -f12 | sort -u > case/ips.txt", "cat case/ips.txt"],
+  walkthrough: "`grep` keeps the failed lines, `cut -d' ' -f12` takes the IP field (the double space after `Nov` counts as an empty field), `sort -u` sorts and drops repeats, and `>` saves the result.",
+  hints: ["Start by making the `case` directory with `mkdir`.", "`grep 'Failed password'` keeps only the failures; `cut` can pick one field.", "Finish the pipe with `sort -u` and redirect it with `> case/ips.txt`."],
+  checks: [
+    { name: "case folder exists", kind: "exists", path: "~/case", text: "dir" },
+    { name: "ips.txt has the attacker", kind: "contains", path: "~/case/ips.txt", text: "203.0.113.7" },
+    { name: "ips.txt has the second IP", kind: "contains", path: "~/case/ips.txt", text: "198.51.100.23" },
+    { name: "no successful logins listed", kind: "lacks", path: "~/case/ips.txt", text: "10.0.0" },
   ],
 };

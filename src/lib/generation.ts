@@ -2,8 +2,8 @@ import "server-only";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { GenerationError, STEP_MAX_OUTPUT, generateModule, generateOutline, repairLab, type CourseBrief, type LabCounts, type ModuleContent, type Outline, type Usage } from "./ai/generate";
-import type { CodeLab, LogsLab, StoredLab } from "./labs/types";
-import { validateCodeLab, validateLab } from "./labs/validate";
+import type { CodeLab, LogsLab, StoredLab, TerminalLab } from "./labs/types";
+import { validateCodeLab, validateLab, validateTerminalLab } from "./labs/validate";
 import { IN_PER_CALL } from "./estimate";
 import type { Variation } from "./ai/intake";
 import { writerFor, type PricedModel } from "./ai/pricing";
@@ -119,7 +119,7 @@ export async function runModule(courseId: string, position: number): Promise<Ste
   }
   const { data, usage } = result;
   const labs: StoredLab[] = [];
-  for (const [k, lab] of [...data.labs, ...data.codeLabs].entries()) {
+  for (const [k, lab] of [...data.labs, ...data.codeLabs, ...data.terminalLabs].entries()) {
     const ok = await checkOrRepair(course, model, lab, `${reason}, lab ${k + 1}`, usage.inputTokens + usage.outputTokens);
     if (ok) labs.push(ok);
   }
@@ -135,10 +135,14 @@ export async function runModule(courseId: string, position: number): Promise<Ste
 export function labsFor(course: typeof schema.courses.$inferSelect, position: number): LabCounts {
   const v = course.variation as Variation;
   const share = (total: number) => Math.floor(((position + 1) * total) / v.modules) - Math.floor((position * total) / v.modules);
-  return { logs: share(v.labs.logs), code: share(v.labs.code) }; // shortcut: terminal labs arrive with their engine (slice 3)
+  return { logs: share(v.labs.logs), code: share(v.labs.code), terminal: share(v.labs.terminal) };
 }
 
-async function check(lab: LogsLab | CodeLab): Promise<{ ok: true; stored: StoredLab } | { ok: false; error: string }> {
+async function check(lab: LogsLab | CodeLab | TerminalLab): Promise<{ ok: true; stored: StoredLab } | { ok: false; error: string }> {
+  if ("checks" in lab) {
+    const r = validateTerminalLab(lab);
+    return r.ok ? { ok: true, stored: { ...lab, kind: "terminal" } } : r;
+  }
   if ("entry" in lab) {
     const r = await validateCodeLab(lab);
     return r.ok ? { ok: true, stored: { ...lab, tests: r.tests, kind: "code", expected: r.expected } } : r;
@@ -153,7 +157,7 @@ const REPAIRS = 2;
  * Runs a lab's reference solution against its own data; a failing lab is repaired up to twice within the cap.
  * Repairs are charged as they happen. A lab still broken after that is dropped, so the course stays playable.
  */
-async function checkOrRepair(course: typeof schema.courses.$inferSelect, model: PricedModel, lab: LogsLab | CodeLab, reason: string, pending: number): Promise<StoredLab | null> {
+async function checkOrRepair(course: typeof schema.courses.$inferSelect, model: PricedModel, lab: LogsLab | CodeLab | TerminalLab, reason: string, pending: number): Promise<StoredLab | null> {
   const { apiKey } = await credentials(course.userId);
   let current = lab;
   for (let attempt = 0; ; attempt++) {

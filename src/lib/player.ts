@@ -4,6 +4,7 @@ import { getDb, schema } from "@/db";
 import type { ModuleContent, Outline } from "./ai/generate";
 import type { Variation } from "./ai/intake";
 import { gradeCode, gradeResult } from "./labs/grade";
+import { replay, runChecks } from "./labs/shell";
 import type { LabTest, PublicLab, ResultSet, StoredLab } from "./labs/types";
 
 // The course player. Grading is deterministic and runs here; quiz answers never reach the browser before a submit.
@@ -27,8 +28,8 @@ export function starsFor(g: Graded, attempt: number): number {
 
 const itemId = (position: number) => `module-${position}`;
 const labItem = (position: number, lab: number) => `module-${position}-lab-${lab}`;
-const SOLVE_AFTER = 3;
-const solutionText = (lab: StoredLab) => (Array.isArray(lab.solution) ? lab.solution.join("\n") : lab.solution); // terminal: one command per line // failed checks before the solution can be opened without using every hint
+const SOLVE_AFTER = 3; // failed checks before the solution can be opened without using every hint
+const solutionText = (lab: StoredLab) => (Array.isArray(lab.solution) ? lab.solution.join("\n") : lab.solution); // terminal: one command per line
 
 /** 3 stars: passed on the first check with no hints. 2: at most one hint. 1: passed any other way, or after the solution. */
 export function labStars(passed: boolean, attempt: number, hintsUsed: number, solutionSeen: boolean): number {
@@ -251,11 +252,11 @@ export type LabResult = { tests: LabTest[]; passed: boolean; stars: number; best
 
 /**
  * Grades what the learner's code produced in the browser (a query's rows, or a function's return values) against
- * the reference results, which never leave the server.
- * shortcut: the browser reports its own results, so a determined learner could fake them; fine for self-study,
- * re-run the code server-side in the validation sandbox before any shared leaderboard.
+ * the reference results, which never leave the server. Terminal labs send their commands and are replayed here.
+ * shortcut: for log and code labs the browser reports its own results, so a determined learner could fake them;
+ * fine for self-study, re-run the code server-side in the validation sandbox before any shared leaderboard.
  */
-export type LabAnswer = { rows: ResultSet } | { values: (string | null)[] };
+export type LabAnswer = { rows: ResultSet } | { values: (string | null)[] } | { commands: string[] };
 
 export async function labSubmit(courseId: string, userId: string, position: number, k: number, answer: LabAnswer): Promise<LabResult | null> {
   const ctx = await labContext(courseId, userId, position, k);
@@ -264,7 +265,10 @@ export async function labSubmit(courseId: string, userId: string, position: numb
   let tests: LabTest[];
   if (lab.kind === "logs" && "rows" in answer) tests = gradeResult(lab.expected, answer.rows, lab.ordered);
   else if (lab.kind === "code" && "values" in answer && answer.values.length === lab.tests.length) tests = gradeCode(lab.expected, lab.tests, answer.values);
-  else return null; // an answer of the wrong shape for this lab
+  else if (lab.kind === "terminal" && "commands" in answer) {
+    const { sh, lastOutput } = replay(lab.files, answer.commands);
+    tests = runChecks(sh, lab.checks, lastOutput);
+  } else return null; // an answer of the wrong shape for this lab
   const passed = tests.every((t) => t.pass);
   const attempt = (ctx.row?.attempts ?? 0) + 1;
   const stars = labStars(passed, attempt, ctx.row?.hintsUsed ?? 0, !!ctx.row?.solutionSeen);

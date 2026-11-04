@@ -170,4 +170,21 @@ describe("labs", () => {
     const all = (await labSubmit(c.id, "local", 0, 0, { values: ["{}", '{"amy":1}', '{"cat":1,"amy":2}', "{}"] }))!;
     expect(all).toMatchObject({ passed: true, stars: 2 }); // second check
   }, 60_000);
+
+  it("grades a terminal lab by replaying the commands on the server, and sends only check names", async () => {
+    const db = await getDb();
+    const variation = { ...fakeIntake("soc").variations[0], modules: 1, weeks: 1, labs: { code: 0, terminal: 1, logs: 0 } };
+    const [c] = await db.insert(schema.courses).values({ userId: "local", title: "t", request: "soc", intent: "i", category: "c", variation, budgetCapTokens: 1_000_000 }).returning();
+    await runOutline(c.id);
+    await runModule(c.id, 0);
+    await finalize(c.id);
+    const lab = (await playModule(c.id, "local", 0))!.labs[0];
+    expect(lab).toMatchObject({ kind: "terminal", checks: ["case folder exists", "ips.txt has the attacker", "ips.txt has the second IP", "no successful logins listed"] });
+    for (const secret of ["solution", "walkthrough"]) expect(lab).not.toHaveProperty(secret);
+    expect(await labSubmit(c.id, "local", 0, 0, { values: [] })).toBeNull(); // wrong answer shape
+    const partial = (await labSubmit(c.id, "local", 0, 0, { commands: ["mkdir case", "cat /var/log/auth.log > case/ips.txt"] }))!;
+    expect(partial.tests.map((t) => t.pass)).toEqual([true, true, true, false]); // the whole log still lists the good logins
+    const done = (await labSubmit(c.id, "local", 0, 0, { commands: ["mkdir case", "cd case", "grep -o 'from [0-9.]*' /var/log/auth.log | grep -v ' 10[.]' | cut -d' ' -f2 | sort -u > ips.txt"] }))!;
+    expect(done).toMatchObject({ passed: true });
+  }, 60_000);
 });

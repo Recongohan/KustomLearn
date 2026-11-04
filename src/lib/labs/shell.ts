@@ -2,6 +2,8 @@
 // no network. The same code runs in the browser (the learner's terminal) and on the server (validation and
 // grading, by replaying the learner's commands), so both always agree.
 
+import { RE2JS } from "re2js";
+
 export type Node = { type: "dir"; mode: number } | { type: "file"; mode: number; content: string };
 export type Shell = { fs: Map<string, Node>; cwd: string; home: string; user: string };
 export type Result = { out: string; err: string; code: number };
@@ -10,6 +12,13 @@ export const HOME = "/home/learner";
 const MAX_OUT = 100_000; // characters any one command may print
 const MAX_FILES = 2_000;
 const MAX_FILE = 1_000_000; // characters in one file
+const MAX_TOTAL = 2_000_000; // characters across all files: the server replays sessions, so they must stay small
+
+const totalSize = (sh: Shell) => {
+  let n = 0;
+  for (const node of sh.fs.values()) if (node.type === "file") n += node.content.length;
+  return n;
+};
 
 export const COMMANDS = ["cat", "cd", "chmod", "clear", "cp", "cut", "echo", "find", "grep", "head", "help", "hostname", "ls", "mkdir", "mv", "pwd", "rm", "rmdir", "sort", "tail", "touch", "uniq", "wc", "whoami"] as const;
 
@@ -178,11 +187,19 @@ function write(sh: Shell, path: string, content: string, append: boolean): strin
   if (node?.type === "dir") return `${path}: Is a directory`;
   if (sh.fs.get(parent(abs))?.type !== "dir") return `${path}: No such file or directory`;
   if (!node && sh.fs.size >= MAX_FILES) return `${path}: No space left on device`;
-  sh.fs.set(abs, { type: "file", mode: node?.mode ?? 0o644, content: ((append && node?.type === "file" ? node.content : "") + content).slice(0, MAX_FILE) });
+  const next = ((append && node?.type === "file" ? node.content : "") + content).slice(0, MAX_FILE);
+  if (totalSize(sh) - (node?.type === "file" ? node.content.length : 0) + next.length > MAX_TOTAL) return `${path}: No space left on device`;
+  sh.fs.set(abs, { type: "file", mode: node?.mode ?? 0o644, content: next });
   return null;
 }
 
 const modeString = (n: Node) => (n.type === "dir" ? "d" : "-") + [6, 3, 0].map((s) => ((n.mode >> s) & 4 ? "r" : "-") + ((n.mode >> s) & 2 ? "w" : "-") + ((n.mode >> s) & 1 ? "x" : "-")).join("");
+
+function allMatches(re: RE2JS, line: string) {
+  const out: string[] = [];
+  for (const m = re.matcher(line); m.find(); ) if (m.group()) out.push(m.group()!);
+  return out;
+}
 
 const run: Record<(typeof COMMANDS)[number], (c: Ctx) => Result> = {
   pwd: (c) => ok(c.sh.cwd + "\n"),
@@ -232,6 +249,7 @@ const run: Record<(typeof COMMANDS)[number], (c: Ctx) => Result> = {
       if (!flags.has("p") && c.sh.fs.get(parent(abs))?.type !== "dir") return fail(`mkdir: cannot create directory '${d}': No such file or directory`);
       const made: string[] = [];
       for (let p = abs; p !== "/" && !c.sh.fs.has(p); p = parent(p)) made.push(p);
+      if (c.sh.fs.size + made.length > MAX_FILES) return fail(`mkdir: cannot create directory '${d}': No space left on device`);
       for (const p of made.reverse()) {
         if (c.sh.fs.get(parent(p))?.type !== "dir") return fail(`mkdir: cannot create directory '${d}': Not a directory`);
         c.sh.fs.set(p, { type: "dir", mode: 0o755 });
@@ -294,9 +312,9 @@ const run: Record<(typeof COMMANDS)[number], (c: Ctx) => Result> = {
     const { flags, rest } = opts(c.args);
     const [pattern, ...files] = rest;
     if (pattern == null) return fail("usage: grep [-icnvo] PATTERN [FILE...]", 2);
-    let re: RegExp;
+    let re: RE2JS; // linear time: the server replays learner sessions, so a pattern must not be able to hang it
     try {
-      re = new RegExp(pattern, flags.has("i") ? "i" : "");
+      re = RE2JS.compile(pattern, flags.has("i") ? RE2JS.CASE_INSENSITIVE : 0);
     } catch {
       return fail(`grep: invalid pattern '${pattern}'`, 2);
     }
@@ -309,7 +327,7 @@ const run: Record<(typeof COMMANDS)[number], (c: Ctx) => Result> = {
       const matched = lines(r.text).map((l, i) => ({ l, i })).filter(({ l }) => re.test(l) !== flags.has("v"));
       hits += matched.length;
       if (flags.has("c")) out += `${prefix}${matched.length}\n`;
-      else if (flags.has("o") && !flags.has("v")) out += joinLines(matched.flatMap(({ l }) => (l.match(new RegExp(re.source, re.flags + "g")) ?? []).map((m) => prefix + m)));
+      else if (flags.has("o") && !flags.has("v")) out += joinLines(matched.flatMap(({ l }) => allMatches(re, l).map((m) => prefix + m)));
       else out += joinLines(matched.map(({ l, i }) => prefix + (flags.has("n") ? `${i + 1}:` : "") + l));
     }
     return { out, err: "", code: hits ? 0 : 1 };
@@ -406,6 +424,8 @@ function copyOrMove(c: Ctx, move: boolean): Result {
     if (target === srcAbs || target.startsWith(srcAbs + "/")) return fail(`${name}: cannot ${name} '${src}' into itself`);
     if (c.sh.fs.get(parent(target))?.type !== "dir") return fail(`${name}: cannot create '${dest}': No such file or directory`);
     const moved = [...c.sh.fs.entries()].filter(([k]) => k === srcAbs || k.startsWith(srcAbs + "/"));
+    const size = moved.reduce((n, [, v]) => n + (v.type === "file" ? v.content.length : 0), 0);
+    if (!move && (c.sh.fs.size + moved.length > MAX_FILES || totalSize(c.sh) + size > MAX_TOTAL)) return fail(`${name}: cannot create '${dest}': No space left on device`);
     if (move) for (const [k] of moved) c.sh.fs.delete(k);
     for (const [k, n] of moved) c.sh.fs.set(target + k.slice(srcAbs.length), { ...n });
     if (move && (c.sh.cwd === srcAbs || c.sh.cwd.startsWith(srcAbs + "/"))) c.sh.cwd = target + c.sh.cwd.slice(srcAbs.length);
@@ -467,7 +487,9 @@ export function runChecks(sh: Shell, checks: { name: string; kind: string; path:
 export function replay(files: { path: string; content: string }[], commands: string[]) {
   const sh = createShell(files);
   let last = "";
+  const deadline = Date.now() + 3_000; // each command is bounded; this bounds the whole session on the server
   for (const c of commands.slice(0, 300)) {
+    if (Date.now() > deadline) break;
     const r = exec(sh, c);
     if (c.trim()) last = r.out;
   }
