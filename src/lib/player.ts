@@ -5,6 +5,8 @@ import type { ModuleContent, Outline } from "./ai/generate";
 import type { Variation } from "./ai/intake";
 import { gradeCode, gradeResult } from "./labs/grade";
 import { replay, runChecks } from "./labs/shell";
+import { isBoss, itemXp } from "./game";
+import { award } from "./gameplay";
 import type { LabTest, PublicLab, ResultSet, StoredLab } from "./labs/types";
 
 // The course player. Grading is deterministic and runs here; quiz answers never reach the browser before a submit.
@@ -93,7 +95,7 @@ export type PlayModule = {
   diagram: string;
   quiz: { question: string; choices: string[] }[];
   best: { stars: number; done: boolean };
-  labs: (PublicLab & { state: LabState })[];
+  labs: (PublicLab & { boss: boolean; state: LabState })[];
 };
 
 export type LabState = { done: boolean; stars: number; attempts: number; hintsShown: string[]; canSolve: boolean; solution: { solution: string; walkthrough: string } | null };
@@ -132,6 +134,7 @@ export async function playModule(courseId: string, userId: string, position: num
             : { kind: "terminal", title: lab.title, task: lab.task, files: lab.files, checks: lab.checks.map((c) => c.name), hints: lab.hints.length }; // check texts stay server-side
       return {
         ...pub,
+        boss: isBoss(position, map.modules.length, k, content.labs!.length),
         state: {
           done: row?.status === "done",
           stars: row?.stars ?? 0,
@@ -145,7 +148,7 @@ export async function playModule(courseId: string, userId: string, position: num
   };
 }
 
-export type QuizResult = Graded & { stars: number; best: number; explanations: string[]; answers: number[]; next: number | null; last: boolean };
+export type QuizResult = Graded & { stars: number; best: number; xp: number; explanations: string[]; answers: number[]; next: number | null; last: boolean };
 
 /** Grades a submitted quiz and records the attempt. Stars only ever go up. */
 export async function submitQuiz(courseId: string, userId: string, position: number, answers: number[]): Promise<QuizResult | null> {
@@ -179,10 +182,12 @@ export async function submitQuiz(courseId: string, userId: string, position: num
     .values({ userId, courseId, itemId: id, ...values })
     .onConflictDoUpdate({ target: [schema.progress.userId, schema.progress.courseId, schema.progress.itemId], set: values });
 
+  const xp = await award(userId, `quiz:${courseId}:${id}:${best}`, "quiz", itemXp("quiz", best) - itemXp("quiz", prev?.stars ?? 0));
   return {
     ...graded,
     stars,
     best,
+    xp,
     explanations: quiz.map((q) => q.explanation),
     answers: quiz.map((q) => q.answer),
     next: await nextOpen(courseId, userId, position),
@@ -226,7 +231,7 @@ async function labContext(courseId: string, userId: string, position: number, k:
     .select()
     .from(schema.progress)
     .where(and(eq(schema.progress.userId, userId), eq(schema.progress.courseId, courseId), eq(schema.progress.itemId, item)));
-  return { lab, row, item };
+  return { lab, row, item, labs: (mod.content as ModuleContent).labs!.length };
 }
 
 /** Opens the next hint tier and returns every hint opened so far. Each one costs stars. */
@@ -248,7 +253,7 @@ export async function labSolution(courseId: string, userId: string, position: nu
   return { solution: solutionText(ctx.lab), walkthrough: ctx.lab.walkthrough };
 }
 
-export type LabResult = { tests: LabTest[]; passed: boolean; stars: number; best: number; canSolve: boolean; next: number | null; levelDone: boolean };
+export type LabResult = { tests: LabTest[]; passed: boolean; stars: number; best: number; xp: number; boss: boolean; canSolve: boolean; next: number | null; levelDone: boolean };
 
 /**
  * Grades what the learner's code produced in the browser (a query's rows, or a function's return values) against
@@ -277,11 +282,15 @@ export async function labSubmit(courseId: string, userId: string, position: numb
   await saveProgress(userId, courseId, ctx.item, { status: done ? "done" : "started", attempts: attempt, stars: best, score: passed ? 100 : (ctx.row?.score ?? 0) });
   const map = await courseMap(courseId, userId);
   const levelDone = !!map?.modules[position]?.done;
+  const boss = isBoss(position, map?.modules.length ?? 1, k, ctx.labs);
+  const xp = await award(userId, `lab:${courseId}:${ctx.item}:${best}`, "lab", itemXp("lab", best, boss) - itemXp("lab", ctx.row?.stars ?? 0, boss));
   return {
     tests,
     passed,
     stars,
     best,
+    xp,
+    boss,
     canSolve: (ctx.row?.hintsUsed ?? 0) >= ctx.lab.hints.length || attempt >= SOLVE_AFTER,
     levelDone,
     next: levelDone && position + 1 < (map?.modules.length ?? 0) ? position + 1 : null,
