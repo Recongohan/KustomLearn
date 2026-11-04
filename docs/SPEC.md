@@ -41,8 +41,10 @@ Any AI call after generation names its reason and cost and asks for consent firs
 - Visual reference: `docs/design/dashboard-preview.dc.html` (a test view, not production code).
 
 ## Architecture
-- Next.js full-stack app run locally (`npm run dev`), with SQLite through an ORM that can switch to cloud Postgres via config.
-- Clerk is optional, cloud mode only. Local mode has a single implicit user, and `userId` is on every table from day one.
+- Next.js full-stack app run locally (`npm run dev`).
+- Postgres everywhere through one ORM schema: **PGlite** (embedded, no install) locally, **Neon** when hosted online. Switching between them only means changing the connection string.
+- **Inngest** runs generation as a durable step function (outline, then each module, validation and links as separate steps), with per-step retries and resume. `npm run dev` also starts the Inngest dev server.
+- **Clerk** is optional, used in cloud mode only. Local mode has a single implicit user, and `userId` is on every table from day one.
 - The API key is entered in Settings and stored server-side in the local database (`.env` works as a fallback). It is never sent back to the browser.
 - A provider adapter interface, with only the Anthropic adapter in v1. Every AI output is validated against a schema.
 
@@ -52,5 +54,6 @@ Other providers, real Docker labs, a public course gallery, adaptive replanning,
 ## Quality
 - Unit tests on schemas, graders and the cost estimator.
 - End-to-end tests of the core flow against a fixture course, so no API calls are made.
-- CI on GitHub Actions.
+- CI on GitHub Actions; **CodeRabbit** reviews every PR.
+- **Sentry** covers our own development and any hosted version we run. It's off unless `SENTRY_DSN` is set, so self-hosted installs send nothing. If we launch it as a product, revisit scrubbing (keys, prompts, course content) and consent.
 - The owner runs separate security audits.
