@@ -20,7 +20,15 @@ export type ModuleContent = z.infer<typeof ModuleContent>;
 
 export type CourseBrief = { intent: string; category: string; request: string; variation: Variation };
 export type Usage = { inputTokens: number; outputTokens: number; costMicros: number };
-export class GenerationError extends Error {}
+/** `usage` is what a failed call still cost; `truncated` means it hit its max_tokens. */
+export class GenerationError extends Error {
+  constructor(message: string, readonly usage?: Usage, readonly truncated = false) {
+    super(message);
+  }
+}
+
+export const STEP_MAX_OUTPUT = { outline: 6000, module: 16000 };
+type Opts = { apiKey: string; model: PricedModel; maxTokens?: number };
 
 const SYSTEM = `You write courses for KustomLearn, a hands-on, gamified learning app for CS, IT and tech.
 Write for the learner's level, in plain words, with concrete examples, real commands and real code. Never pad. Accuracy matters more than length.`;
@@ -44,13 +52,16 @@ async function call<T extends z.ZodType>(schema: T, prompt: string, opts: { apiK
     system: SYSTEM,
     messages: [{ role: "user", content: prompt }],
   });
-  if (res.stop_reason === "refusal") throw new GenerationError("The model declined part of this course.");
-  if (res.stop_reason === "max_tokens" || !res.parsed_output) throw new GenerationError("A step came back incomplete.");
-  return { data: res.parsed_output as z.infer<T>, usage: billedUsage(res.usage, opts.model) };
+  const usage = billedUsage(res.usage, opts.model);
+  if (res.stop_reason === "refusal") throw new GenerationError("The model declined part of this course.", usage);
+  if (res.stop_reason === "max_tokens") throw new GenerationError("A step came back incomplete.", usage, true);
+  if (!res.parsed_output) throw new GenerationError("A step came back incomplete.", usage);
+  return { data: res.parsed_output as z.infer<T>, usage };
 }
 
-export async function generateOutline(c: CourseBrief, opts: { apiKey: string; model: PricedModel }): Promise<{ data: Outline; usage: Usage }> {
-  if (process.env.KL_FAKE_AI === "1") return (await import("./fixtures")).fakeOutline(c.variation.modules);
+export async function generateOutline(c: CourseBrief, opts: Opts): Promise<{ data: Outline; usage: Usage }> {
+  const maxTokens = Math.min(STEP_MAX_OUTPUT.outline, opts.maxTokens ?? Infinity);
+  if (process.env.KL_FAKE_AI === "1") return (await import("./fixtures")).fakeOutline(c.variation.modules, maxTokens);
   const { data, usage } = await call(
     Outline,
     `${brief(c)}
@@ -58,9 +69,9 @@ export async function generateOutline(c: CourseBrief, opts: { apiKey: string; mo
 Write the course outline: a course title and exactly ${c.variation.modules} modules in learning order.
 Each module has a short title, a one-sentence summary and 2-4 objectives starting with a verb.
 ${c.variation.capstone ? "The last module prepares for a final capstone project." : ""}`,
-    { ...opts, maxTokens: 6000 },
+    { ...opts, maxTokens },
   );
-  if (data.modules.length !== c.variation.modules) throw new GenerationError("The outline has the wrong number of modules.");
+  if (data.modules.length !== c.variation.modules) throw new GenerationError("The outline has the wrong number of modules.", usage);
   return { data, usage };
 }
 
@@ -68,9 +79,10 @@ export async function generateModule(
   c: CourseBrief,
   outline: Outline,
   index: number,
-  opts: { apiKey: string; model: PricedModel },
+  opts: Opts,
 ): Promise<{ data: ModuleContent; usage: Usage }> {
-  if (process.env.KL_FAKE_AI === "1") return (await import("./fixtures")).fakeModule(outline.modules[index].title);
+  const maxTokens = Math.min(STEP_MAX_OUTPUT.module, opts.maxTokens ?? Infinity);
+  if (process.env.KL_FAKE_AI === "1") return (await import("./fixtures")).fakeModule(outline.modules[index].title, maxTokens);
   const m = outline.modules[index];
   const { data, usage } = await call(
     ModuleContent,
@@ -85,10 +97,10 @@ Objectives: ${m.objectives.join("; ")}
 - sections: 3-5 lesson sections in GitHub-flavored markdown, with code blocks or commands where they help.
 - diagram: one Mermaid flowchart or sequence diagram if it makes an idea clearer, otherwise "".
 - quiz: 4-6 multiple-choice questions with 4 choices each; answer is the 0-based index; explanation says why.`,
-    { ...opts, maxTokens: 16000 },
+    { ...opts, maxTokens },
   );
   if (data.quiz.some((q) => q.choices.length < 2 || q.answer < 0 || q.answer >= q.choices.length)) {
-    throw new GenerationError("A quiz question has an invalid answer.");
+    throw new GenerationError("A quiz question has an invalid answer.", usage);
   }
   return { data, usage };
 }

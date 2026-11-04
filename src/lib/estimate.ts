@@ -3,7 +3,7 @@ import type { Variation } from "./ai/intake";
 
 // Rough per-item token budgets for generation; retune once real runs are logged.
 const OUT = { outline: 3_000, lesson: 3_500, quiz: 1_200, lab: 4_500, capstone: 9_000 };
-const IN_PER_CALL = 5_000; // system prompt + outline context per module call
+export const IN_PER_CALL = 5_000; // system prompt + outline context per module call
 const REPAIR_RESERVE = 0.2; // auto-repair of labs that fail validation
 
 export type Estimate = {

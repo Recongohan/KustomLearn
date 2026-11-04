@@ -1,7 +1,8 @@
 import "server-only";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { getDb, schema } from "@/db";
-import { generateModule, generateOutline, type CourseBrief, type Outline, type Usage } from "./ai/generate";
+import { GenerationError, STEP_MAX_OUTPUT, generateModule, generateOutline, type CourseBrief, type Outline, type Usage } from "./ai/generate";
+import { IN_PER_CALL } from "./estimate";
 import type { Variation } from "./ai/intake";
 import type { PricedModel } from "./ai/pricing";
 import { getAiCredentials } from "./settings";
@@ -29,13 +30,33 @@ async function credentials(userId: string) {
   return { apiKey: creds.apiKey ?? "", model: creds.model };
 }
 
-/** Pauses (without spending) once the approved token cap is used up. */
-async function overCap(courseId: string): Promise<StepResult | null> {
-  const { db, course } = await loadCourse(courseId);
-  if (course.budgetCapTokens == null || course.spentTokens < course.budgetCapTokens) return null;
+const MIN_STEP_OUTPUT = 4_000; // below this a step can't produce anything useful, so pause instead
+
+async function pause(courseId: string): Promise<StepResult> {
+  const db = await getDb();
   const reason = "Paused at your token cap. Approve a bit more to finish.";
   await db.update(schema.courses).set({ status: "partial", statusNote: reason }).where(eq(schema.courses.id, courseId));
   return { paused: true, reason };
+}
+
+/** Output tokens the next call may use so spending stays under the cap, or null when it can't fit. */
+function roomLeft(course: typeof schema.courses.$inferSelect): number | null {
+  if (course.budgetCapTokens == null) return Infinity;
+  const room = course.budgetCapTokens - course.spentTokens - IN_PER_CALL;
+  return room >= MIN_STEP_OUTPUT ? room : null;
+}
+
+/**
+ * Charges a failed call for what it used, then rethrows so Inngest retries the step.
+ * A call cut off because the cap limited its output pauses instead: retrying can't fit either.
+ */
+async function chargeFailure(err: unknown, course: typeof schema.courses.$inferSelect, model: PricedModel, room: number, stepMax: number, reason: string): Promise<StepResult> {
+  if (!(err instanceof GenerationError) || !err.usage) throw err;
+  const usage = err.usage;
+  const db = await getDb();
+  await db.transaction((tx) => charge(tx, course.id, course.userId, model, usage, `${reason} (incomplete)`));
+  if (err.truncated && room < stepMax) return pause(course.id);
+  throw err;
 }
 
 type Tx = Parameters<Parameters<Awaited<ReturnType<typeof getDb>>["transaction"]>[0]>[0];
@@ -53,15 +74,22 @@ async function charge(tx: Tx, courseId: string, userId: string, model: PricedMod
 export async function runOutline(courseId: string): Promise<StepResult> {
   const { db, course } = await loadCourse(courseId);
   if (course.plan) return { paused: false, modules: (course.plan as Outline).modules.length };
-  const capped = await overCap(courseId);
-  if (capped) return capped;
+  const room = roomLeft(course);
+  if (room == null) return pause(courseId);
 
   const { apiKey, model } = await credentials(course.userId);
-  const { data, usage } = await generateOutline(briefOf(course), { apiKey, model });
+  const reason = "Build the course outline";
+  let result;
+  try {
+    result = await generateOutline(briefOf(course), { apiKey, model, maxTokens: room });
+  } catch (err) {
+    return chargeFailure(err, course, model, room, STEP_MAX_OUTPUT.outline, reason);
+  }
+  const { data, usage } = result;
   await db.transaction(async (tx) => {
     await tx.insert(schema.modules).values(data.modules.map((m, i) => ({ courseId, position: i, title: m.title })));
     await tx.update(schema.courses).set({ plan: data, title: data.title }).where(eq(schema.courses.id, courseId));
-    await charge(tx, courseId, course.userId, model, usage, "Build the course outline");
+    await charge(tx, courseId, course.userId, model, usage, reason);
   });
   return { paused: false, modules: data.modules.length };
 }
@@ -74,14 +102,21 @@ export async function runModule(courseId: string, position: number): Promise<Ste
     .from(schema.modules)
     .where(and(eq(schema.modules.courseId, courseId), eq(schema.modules.position, position)));
   if (mod.content) return { paused: false, modules: plan.modules.length };
-  const capped = await overCap(courseId);
-  if (capped) return capped;
+  const room = roomLeft(course);
+  if (room == null) return pause(courseId);
 
   const { apiKey, model } = await credentials(course.userId);
-  const { data, usage } = await generateModule(briefOf(course), plan, position, { apiKey, model });
+  const reason = `Write module ${position + 1}: ${mod.title}`;
+  let result;
+  try {
+    result = await generateModule(briefOf(course), plan, position, { apiKey, model, maxTokens: room });
+  } catch (err) {
+    return chargeFailure(err, course, model, room, STEP_MAX_OUTPUT.module, reason);
+  }
+  const { data, usage } = result;
   await db.transaction(async (tx) => {
     await tx.update(schema.modules).set({ content: data }).where(eq(schema.modules.id, mod.id));
-    await charge(tx, courseId, course.userId, model, usage, `Write module ${position + 1}: ${mod.title}`);
+    await charge(tx, courseId, course.userId, model, usage, reason);
   });
   return { paused: false, modules: plan.modules.length };
 }

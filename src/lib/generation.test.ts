@@ -41,21 +41,26 @@ describe("generation pipeline", () => {
     expect(await db.select().from(schema.aiCalls).where(eq(schema.aiCalls.courseId, id))).toHaveLength(4);
   });
 
-  it("pauses at the token cap instead of spending past it, then resumes once raised", async () => {
-    const id = await newCourse(15_000);
+  it("never spends past the token cap: shrinks the last call to fit, pauses, resumes once raised", async () => {
+    const id = await newCourse(32_000);
     await runOutline(id); // 11K spent
-    await runModule(id, 0); // 22K spent: allowed, cap was not reached before the step
-    expect(await runModule(id, 1)).toMatchObject({ paused: true });
-    const p = (await progressOf(id, "local"))!;
+    await runModule(id, 0); // 22K spent; 5K output room is left after the input allowance
+    expect(await runModule(id, 1)).toMatchObject({ paused: true }); // cut off at 5K output, charged, paused
+    let p = (await progressOf(id, "local"))!;
     expect(p.status).toBe("partial");
-    expect(p.spentTokens).toBe(22_000);
+    expect(p.spentTokens).toBe(32_000);
+    expect(p.modules[1].done).toBe(false);
+    expect(await runModule(id, 1)).toMatchObject({ paused: true }); // no room at all: pauses without a call
+    expect((await progressOf(id, "local"))!.spentTokens).toBe(32_000);
 
     const db = await getDb();
     await db.update(schema.courses).set({ budgetCapTokens: 100_000, status: "generating" }).where(eq(schema.courses.id, id));
     await runModule(id, 1);
     await runModule(id, 2);
     await finalize(id);
-    expect((await progressOf(id, "local"))!.status).toBe("ready");
+    p = (await progressOf(id, "local"))!;
+    expect(p.status).toBe("ready");
+    expect(p.spentTokens).toBe(54_000);
   });
 
   it("refuses to finalize with missing modules", async () => {

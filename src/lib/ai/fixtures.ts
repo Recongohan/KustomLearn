@@ -1,10 +1,18 @@
 import { costMicros } from "./pricing";
 import type { Intake } from "./intake";
-import type { ModuleContent, Outline } from "./generate";
+import { GenerationError, type ModuleContent, type Outline } from "./generate";
 
 const FAKE_USAGE = { inputTokens: 5_000, outputTokens: 6_000, costMicros: costMicros("claude-opus-5-5", 5_000, 6_000) };
 
-export function fakeOutline(modules: number): { data: Outline; usage: typeof FAKE_USAGE } {
+// A fake call needs 6K output tokens; with less room it is cut off like a real one, and still costs what it used.
+function fakeLimit(maxTokens: number) {
+  if (maxTokens >= FAKE_USAGE.outputTokens) return;
+  const usage = { inputTokens: 5_000, outputTokens: maxTokens, costMicros: costMicros("claude-opus-5-5", 5_000, maxTokens) };
+  throw new GenerationError("A step came back incomplete.", usage, true);
+}
+
+export function fakeOutline(modules: number, maxTokens: number): { data: Outline; usage: typeof FAKE_USAGE } {
+  fakeLimit(maxTokens);
   return {
     data: {
       title: "SOC Analyst from Zero",
@@ -18,7 +26,8 @@ export function fakeOutline(modules: number): { data: Outline; usage: typeof FAK
   };
 }
 
-export function fakeModule(title: string): { data: ModuleContent; usage: typeof FAKE_USAGE } {
+export function fakeModule(title: string, maxTokens: number): { data: ModuleContent; usage: typeof FAKE_USAGE } {
+  fakeLimit(maxTokens);
   return {
     data: {
       sections: [
