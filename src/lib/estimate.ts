@@ -47,3 +47,10 @@ export function estimate(v: Pick<Variation, "modules" | "labs" | "capstone">, mo
     capMicros: range(mid, 1.3),
   };
 }
+
+/** What a branch from level `from` (0-based) will write: the levels after it, with their share of the labs. */
+export function branchEstimate(v: Pick<Variation, "modules" | "labs" | "capstone">, from: number, model: PricedModel): Estimate {
+  const left = v.modules - from;
+  const share = (n: number) => Math.round((n * left) / v.modules);
+  return estimate({ modules: left, labs: { code: share(v.labs.code), terminal: share(v.labs.terminal), logs: share(v.labs.logs) }, capstone: v.capstone }, model);
+}

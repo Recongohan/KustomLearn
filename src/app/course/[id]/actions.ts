@@ -4,7 +4,8 @@ import { z } from "zod";
 import { getDb, schema } from "@/db";
 import { inngest } from "@/inngest/client";
 import { progressOf, type Progress } from "@/lib/generation";
-import { currentUserId, getApiKey } from "@/lib/settings";
+import { currentUserId, getApiKey, getSettings } from "@/lib/settings";
+import { createBranch, MAX_INSTRUCTION } from "@/lib/branch";
 
 const Id = z.string().uuid();
 
@@ -39,4 +40,22 @@ export async function startGeneration(courseId: string, raiseCap = false): Promi
     return { ok: false, message: "The job runner isn't reachable. Start the app with `npm run dev` or `docker compose up`." };
   }
   return { ok: true };
+}
+
+const Branch = z.object({ courseId: Id, from: z.number().int().min(0).max(64), instruction: z.string().trim().min(3).max(MAX_INSTRUCTION), consented: z.literal(true) });
+
+/**
+ * Branches a finished course from a level with a new direction, then starts writing it. This spends tokens on
+ * the learner's key, so it only runs with their explicit consent from the dialog.
+ */
+export async function branchAction(courseId: string, from: number, instruction: string, consented: boolean): Promise<{ ok: true; id: string } | { ok: false; message: string }> {
+  const p = Branch.safeParse({ courseId, from, instruction, consented });
+  if (!p.success) return { ok: false, message: "Say what should change (at least a few words), and confirm the AI use." };
+  const userId = currentUserId();
+  if (!(await getApiKey(userId)) && process.env.KL_FAKE_AI !== "1") return { ok: false, message: "Add your Anthropic key in Settings first." };
+  const { model } = await getSettings(userId);
+  const id = await createBranch(p.data.courseId, userId, p.data.from, p.data.instruction, model);
+  if (!id) return { ok: false, message: "That course or level can't be branched." };
+  await startGeneration(id); // if the job runner is down, the branch waits as a draft with its own build button
+  return { ok: true, id };
 }

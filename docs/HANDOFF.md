@@ -15,14 +15,15 @@ PRs are stacked. Each targets the branch before it:
 | #4 | `m4-player` → `m3-generation` | Codex finding (empty quiz) fixed. |
 | #5 | `m5-labs` → `m4-player` | Milestone 5 (log, code and terminal labs). |
 | #6 | `m6-gamification` → `m5-labs` | Milestone 6 (gamification). |
+| #7 | `m7-ownership` → `m6-gamification` | Milestone 7 (export/import, branching, consent). |
 
 - **After #1 merges:** retarget #2 to `main`, then #3 after #2, and so on. CodeRabbit only auto-reviews PRs whose base is `main`; Codex reviews every PR.
 - **Merge flow:** fix on the lowest branch, then `git merge` upward (m0 → m2 → m3 → m4 → m5), testing each.
 - **A new session** must `subscribe_pr_activity` for PRs #1–#4 again.
 
 ## Immediate to-dos
-1. **PR #5 (M5) and PR #6 (M6) are open.** Watch them for Codex findings. On PR #5, the two Codex threads have replies and fixes (fe45d4d), but resolving them was blocked by permissions, so they are still open.
-2. **Then milestone 7** (branching, `.kustom` export/import, consent dialog). See `docs/PLAN.md`.
+1. **PRs #5 (M5), #6 (M6) and #7 (M7) are open.** Watch them for Codex findings. On PR #5, the two Codex threads have replies and fixes (fe45d4d), but resolving them was blocked by permissions, so they are still open.
+2. **Then milestone 8** (cloud mode: Clerk, Neon, hosted Inngest, per-user isolation, deploy guide). See `docs/PLAN.md`. It needs the owner's Clerk and Neon accounts, so ask before wiring real services.
 
 ## What exists (by milestone)
 - **M0/1:** shell, themes, PGlite or Neon, settings with an encrypted key, Docker, CI, Sentry gate.
@@ -44,6 +45,10 @@ PRs are stacked. Each targets the branch before it:
   - Days use the learner's time zone, from the `kl_tz` cookie set in the layout's inline script. The first visit reloads once to set it.
   - XP: a quiz pays 30/40/50 for 1/2/3 stars and a lab 60/80/100, paid as the difference when stars go up. Mini-bosses (the last lab of every third level and of the final level) pay 1.5×.
   - Screens: the home dashboard, /quests (daily quests and the weekly chest), /ranks (the ladder and buddies) and /trophies. The quiz and lab results show +XP with confetti.
+- **M7 ownership:**
+  - **Export/import:** `src/lib/bundle.ts` handles `.kustom` (JSON, version 1). Export is `/course/[id]/export`; import is `/import`, through a server action (`bodySizeLimit` 11 MB, files capped at 10 MB). Imports are checked by zod shape and size, quiz answers are range-checked and terminal labs are re-validated. No learner data, keys or costs are exported.
+  - **Branching:** `src/lib/branch.ts` creates a draft that copies the levels before `from` and the learner's progress on them, and stores `variation.branch` (from, instruction, kept outline). `runOutline` keeps those modules and inserts only the new ones. The brief carries the new direction.
+  - **Consent:** `ConsentDialog` (native modal) gates the branch action (`consented: true` is required server-side) and shows the token cap.
 - **Key audit (2026-11-04):** full history of every branch and PR scanned for keys; clean. GitHub secret scanning and push protection are on. `.gitignore` also ignores `app-secret` and `**/pglite/`.
 - **Stars:**
   - Quiz: 3 for a perfect first try, 2 for a first-try pass, 1 for a later pass.

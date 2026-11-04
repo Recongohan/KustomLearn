@@ -26,7 +26,8 @@ type GeneratedModule = z.infer<typeof ModuleContent>;
 export type ModuleContent = Omit<GeneratedModule, "labs" | "codeLabs" | "terminalLabs"> & { labs?: StoredLab[] };
 export type LabCounts = { logs: number; code: number; terminal: number };
 
-export type CourseBrief = { intent: string; category: string; request: string; variation: Variation };
+/** `branch`: a course branched from another one keeps its first modules and takes a new direction after them. */
+export type CourseBrief = { intent: string; category: string; request: string; variation: Variation; branch?: { keep: Outline["modules"]; instruction: string } };
 export type Usage = { inputTokens: number; outputTokens: number; costMicros: number };
 /** `usage` is what a failed call still cost; `truncated` means it hit its max_tokens. */
 export class GenerationError extends Error {
@@ -67,7 +68,7 @@ Goal: ${c.intent}
 Field: ${c.category}
 Path: ${c.variation.name} (${c.variation.pitch})
 Level: ${c.variation.level}. Timeline: ${c.variation.weeks} weeks at ${c.variation.hoursPerWeek} hours a week.
-Outcomes: ${c.variation.outcomes.join("; ")}`;
+Outcomes: ${c.variation.outcomes.join("; ")}${c.branch ? `\nNew direction from module ${c.branch.keep.length + 1} on, in the learner's words: ${c.branch.instruction}` : ""}`;
 
 // `shared` is the same for every module of a course, so it is cached and later module calls read it cheaply.
 async function call<T extends z.ZodType>(schema: T, prompt: string | { shared: string; task: string }, opts: { apiKey: string; model: PricedModel; maxTokens: number }) {
@@ -100,17 +101,26 @@ async function call<T extends z.ZodType>(schema: T, prompt: string | { shared: s
 
 export async function generateOutline(c: CourseBrief, opts: Opts): Promise<{ data: Outline; usage: Usage }> {
   const maxTokens = Math.min(STEP_MAX_OUTPUT.outline, opts.maxTokens ?? Infinity);
-  if (process.env.KL_FAKE_AI === "1") return (await import("./fixtures")).fakeOutline(c.variation.modules, maxTokens);
-  const { data, usage } = await call(
-    Outline,
-    `${brief(c)}
+  const keep = c.branch?.keep ?? [];
+  const result =
+    process.env.KL_FAKE_AI === "1"
+      ? (await import("./fixtures")).fakeOutline(c.variation.modules, maxTokens)
+      : await call(
+          Outline,
+          `${brief(c)}
 
 Write the course outline: a course title and exactly ${c.variation.modules} modules in learning order.
 Each module has a short title, a one-sentence summary and 2-4 objectives starting with a verb.
-${c.variation.capstone ? "The last module prepares for a final capstone project." : ""}`,
-    { ...opts, maxTokens },
-  );
+${c.variation.capstone ? "The last module prepares for a final capstone project." : ""}${
+            keep.length
+              ? `\nThis course is a branch of one the learner already started. Keep its first ${keep.length} modules exactly as they are, then write the rest to follow the new direction:\n${keep.map((m, i) => `${i + 1}. ${m.title}: ${m.summary}`).join("\n")}`
+              : ""
+          }`,
+          { ...opts, maxTokens },
+        );
+  const { data, usage } = result;
   if (data.modules.length !== c.variation.modules) throw new GenerationError("The outline has the wrong number of modules.", usage);
+  data.modules.splice(0, keep.length, ...keep); // the kept modules are already written; never let them drift
   return { data, usage };
 }
 
