@@ -10,7 +10,7 @@ describe("tokens", () => {
     expect(estimate(v, "claude-haiku-5-5").capTokens).toBe(estimate(v, "claude-opus-5-5").capTokens);
   });
 });
-import { costMicros } from "./ai/pricing";
+import { billedUsage, costMicros } from "./ai/pricing";
 import { normalize } from "./ai/intake";
 import { fakeIntake } from "./ai/fixtures";
 
@@ -43,5 +43,25 @@ describe("normalize", () => {
     const n = normalize(raw);
     expect(n.variations).toHaveLength(3);
     expect(n.variations[0]).toMatchObject({ weeks: 12, modules: 3, labs: { code: 0, terminal: 30, logs: 3 } });
+  });
+});
+
+describe("billed usage", () => {
+  it("uses top-level usage when there are no iterations", () => {
+    expect(billedUsage({ input_tokens: 1000, output_tokens: 100 }, "claude-opus-5-5")).toEqual({ inputTokens: 1000, outputTokens: 100, costMicros: 6000 });
+  });
+  it("counts every fallback attempt at its own model's rate", () => {
+    const usage = {
+      input_tokens: 1000,
+      output_tokens: 100,
+      iterations: [
+        { input_tokens: 1000, output_tokens: 20, model: "claude-opus-5-5" }, // declined mid-output
+        { input_tokens: 1000, output_tokens: 100, model: "claude-opus-5" },
+      ],
+    };
+    expect(billedUsage(usage, "claude-opus-5-5")).toEqual({ inputTokens: 2000, outputTokens: 120, costMicros: 4400 + 7500 });
+  });
+  it("prices an unknown model at the highest known rate", () => {
+    expect(billedUsage({ input_tokens: 0, output_tokens: 0, iterations: [{ input_tokens: 1_000_000, output_tokens: 0, model: "claude-new" }] }, "claude-haiku-5-5").costMicros).toBe(5_000_000);
   });
 });
