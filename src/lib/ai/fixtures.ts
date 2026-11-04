@@ -1,7 +1,8 @@
+import { costMicros } from "./pricing";
 import type { Intake } from "./intake";
 import type { ModuleContent, Outline } from "./generate";
 
-const FAKE_USAGE = { inputTokens: 5_000, outputTokens: 6_000 };
+const FAKE_USAGE = { inputTokens: 5_000, outputTokens: 6_000, costMicros: costMicros("claude-opus-5-5", 5_000, 6_000) };
 
 export function fakeOutline(modules: number): { data: Outline; usage: typeof FAKE_USAGE } {
   return {

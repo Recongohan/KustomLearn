@@ -3,7 +3,7 @@ import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { generateModule, generateOutline, type CourseBrief, type Outline, type Usage } from "./ai/generate";
 import type { Variation } from "./ai/intake";
-import { costMicros } from "./ai/pricing";
+import type { PricedModel } from "./ai/pricing";
 import { getAiCredentials } from "./settings";
 
 // Each step is idempotent: Inngest retries a failed step, so a step that already finished just returns.
@@ -38,15 +38,14 @@ async function overCap(courseId: string): Promise<StepResult | null> {
   return { paused: true, reason };
 }
 
-async function charge(courseId: string, userId: string, model: Parameters<typeof costMicros>[0], usage: Usage, reason: string) {
+async function charge(courseId: string, userId: string, model: PricedModel, usage: Usage, reason: string) {
   const db = await getDb();
   const tokens = usage.inputTokens + usage.outputTokens;
-  const cost = costMicros(model, usage.inputTokens, usage.outputTokens);
   await db
     .update(schema.courses)
-    .set({ spentTokens: sql`${schema.courses.spentTokens} + ${tokens}`, spentMicros: sql`${schema.courses.spentMicros} + ${cost}` })
+    .set({ spentTokens: sql`${schema.courses.spentTokens} + ${tokens}`, spentMicros: sql`${schema.courses.spentMicros} + ${usage.costMicros}` })
     .where(eq(schema.courses.id, courseId));
-  await db.insert(schema.aiCalls).values({ userId, courseId, reason, model, ...usage, costMicros: cost });
+  await db.insert(schema.aiCalls).values({ userId, courseId, reason, model, ...usage });
 }
 
 export async function runOutline(courseId: string): Promise<StepResult> {

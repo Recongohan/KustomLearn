@@ -3,7 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import type { Variation } from "./intake";
-import type { PricedModel } from "./pricing";
+import { billedUsage, type PricedModel } from "./pricing";
 
 export const Outline = z.object({
   title: z.string(),
@@ -19,7 +19,7 @@ export const ModuleContent = z.object({
 export type ModuleContent = z.infer<typeof ModuleContent>;
 
 export type CourseBrief = { intent: string; category: string; request: string; variation: Variation };
-export type Usage = { inputTokens: number; outputTokens: number };
+export type Usage = { inputTokens: number; outputTokens: number; costMicros: number };
 export class GenerationError extends Error {}
 
 const SYSTEM = `You write courses for KustomLearn, a hands-on, gamified learning app for CS, IT and tech.
@@ -46,7 +46,7 @@ async function call<T extends z.ZodType>(schema: T, prompt: string, opts: { apiK
   });
   if (res.stop_reason === "refusal") throw new GenerationError("The model declined part of this course.");
   if (res.stop_reason === "max_tokens" || !res.parsed_output) throw new GenerationError("A step came back incomplete.");
-  return { data: res.parsed_output as z.infer<T>, usage: { inputTokens: res.usage.input_tokens, outputTokens: res.usage.output_tokens } };
+  return { data: res.parsed_output as z.infer<T>, usage: billedUsage(res.usage, opts.model) };
 }
 
 export async function generateOutline(c: CourseBrief, opts: { apiKey: string; model: PricedModel }): Promise<{ data: Outline; usage: Usage }> {
