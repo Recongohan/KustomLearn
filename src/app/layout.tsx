@@ -15,8 +15,9 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = { themeColor: "#0e0f12", viewportFit: "cover" };
 
-// Applied before paint so the saved theme never flashes.
-const themeScript = `try{var t=localStorage.getItem("kl-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}`;
+// Applied before paint so the saved theme never flashes. Also tells the server the learner's time zone, so days
+// (streaks, quests) roll over at their midnight. The very first visit reloads once so it renders in that zone too.
+const themeScript = `try{var t=localStorage.getItem("kl-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}try{var z=encodeURIComponent(Intl.DateTimeFormat().resolvedOptions().timeZone),had=document.cookie.indexOf("kl_tz=")>=0;document.cookie="kl_tz="+z+";path=/;max-age=31536000;samesite=lax";if(!had&&document.cookie.indexOf("kl_tz=")>=0)location.reload()}catch(e){}`;
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (

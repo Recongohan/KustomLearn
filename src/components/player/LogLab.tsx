@@ -9,7 +9,7 @@ import type { LabResult, LabState } from "@/lib/player";
 import { LabHelp, Verdict } from "./LabParts";
 import { Markdown } from "./Markdown";
 
-type Props = { courseId: string; position: number; index: number; lab: Extract<PublicLab, { kind: "logs" }> & { state: LabState } };
+type Props = { courseId: string; position: number; index: number; lab: Extract<PublicLab, { kind: "logs" }> & { boss?: boolean; state: LabState } };
 type Table = { name: string; columns: string[]; rows: number };
 
 const spring = { type: "spring", stiffness: 480, damping: 28 } as const;
@@ -108,7 +108,7 @@ export function LogLab({ courseId, position, index, lab }: Props) {
   return (
     <section aria-labelledby={`${id}-h`} className="kl-in flex flex-col gap-4 rounded-3xl border border-line bg-panel p-5 md:p-6">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <h2 id={`${id}-h`} className="font-display text-2xl font-extrabold">Lab: {lab.title}</h2>
+        <h2 id={`${id}-h`} className="font-display text-2xl font-extrabold">{lab.boss ? "Mini-boss" : "Lab"}: {lab.title}</h2>
         <span className="text-sm text-muted">Log investigation</span>
         {done && (
           <motion.span initial={{ scale: 0 }} animate={{ scale: 1 }} transition={spring} className="ml-auto rounded-full bg-green/15 px-3 py-1 text-sm font-semibold text-green-ink">

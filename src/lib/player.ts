@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, desc, eq } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import type { ModuleContent, Outline } from "./ai/generate";
 import type { Variation } from "./ai/intake";
@@ -296,3 +296,40 @@ export async function labSubmit(courseId: string, userId: string, position: numb
     next: levelDone && position + 1 < (map?.modules.length ?? 0) ? position + 1 : null,
   };
 }
+
+/**
+ * The course the home screen leads with: the one last played (else the newest ready one), its next level,
+ * and its next unbeaten mini-boss.
+ */
+export async function homeCourse(userId: string) {
+  const db = await getDb();
+  const [last] = await db
+    .select({ id: schema.courses.id })
+    .from(schema.progress)
+    .innerJoin(schema.courses, eq(schema.courses.id, schema.progress.courseId))
+    .where(and(eq(schema.progress.userId, userId), eq(schema.courses.status, "ready")))
+    .orderBy(desc(schema.progress.updatedAt))
+    .limit(1);
+  const [newest] = last ? [last] : await db.select({ id: schema.courses.id }).from(schema.courses).where(and(eq(schema.courses.userId, userId), eq(schema.courses.status, "ready"))).orderBy(desc(schema.courses.createdAt)).limit(1);
+  if (!newest) return null;
+  const map = await courseMap(newest.id, userId);
+  if (!map) return null;
+  const [mods, rows] = await Promise.all([
+    db.select({ position: schema.modules.position, content: schema.modules.content }).from(schema.modules).where(eq(schema.modules.courseId, newest.id)).orderBy(asc(schema.modules.position)),
+    db.select().from(schema.progress).where(and(eq(schema.progress.courseId, newest.id), eq(schema.progress.userId, userId))),
+  ]);
+  const byItem = new Map(rows.map((r) => [r.itemId, r]));
+  let boss: { position: number; index: number; title: string; unlocked: boolean; attempts: number; scheduledOn: string | null } | null = null;
+  for (const m of mods) {
+    const labs = (m.content as ModuleContent | null)?.labs ?? [];
+    const k = labs.length - 1;
+    if (k < 0 || !isBoss(m.position, mods.length, k, labs.length)) continue;
+    const row = byItem.get(labItem(m.position, k));
+    if (row?.status === "done") continue;
+    const entry = map.modules[m.position];
+    boss = { position: m.position, index: k, title: labs[k].title, unlocked: entry.unlocked, attempts: row?.attempts ?? 0, scheduledOn: entry.scheduledOn };
+    break;
+  }
+  return { id: newest.id, title: map.title, modules: map.modules, next: map.modules.find((m) => m.unlocked && !m.done) ?? null, boss };
+}
+export type HomeCourse = NonNullable<Awaited<ReturnType<typeof homeCourse>>>;
