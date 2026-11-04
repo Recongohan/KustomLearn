@@ -1,0 +1,23 @@
+# Local or single-server: `docker compose up`, then open http://localhost:3000
+services:
+  app:
+    build: .
+    image: ghcr.io/recongohan/kustomlearn:latest
+    ports: ["3000:3000"]
+    env_file: { path: .env, required: false }
+    environment:
+      INNGEST_DEV: "1"
+      INNGEST_BASE_URL: http://inngest:8288
+    volumes: ["kustomlearn-data:/app/data"]
+    depends_on: [inngest]
+    restart: unless-stopped
+
+  # Job runner for course generation. For production, point the app at Inngest Cloud instead.
+  inngest:
+    image: inngest/inngest:v1.49.0
+    command: inngest dev -u http://app:3000/api/inngest --no-discovery
+    ports: ["8288:8288"]
+    restart: unless-stopped
+
+volumes:
+  kustomlearn-data:

@@ -13,3 +13,18 @@ Status: design and spec. See [docs/SPEC.md](docs/SPEC.md).
 
 ## License
 MIT
+
+## Run it
+**Local** (Node 22+):
+```bash
+npm install
+npm run dev        # app on :3000, job runner on :8288
+```
+Open http://localhost:3000 and add your Anthropic key in Settings. Data lives in `./data`.
+
+**Docker:**
+```bash
+docker compose up  # same thing in containers, data in a volume
+```
+
+**Cloud:** run the image `ghcr.io/recongohan/kustomlearn` with `DATABASE_URL` (Neon), `APP_SECRET`, and `INNGEST_EVENT_KEY` and `INNGEST_SIGNING_KEY` from Inngest Cloud. See `.env.example`.
