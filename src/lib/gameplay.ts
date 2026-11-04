@@ -26,6 +26,13 @@ export async function award(userId: string, key: string, reason: "quiz" | "lab" 
   return rows.length ? amount : 0;
 }
 
+/** Marks a passed quiz or lab for today's quests and the weekly chest, even when it pays no new XP (a re-clear). */
+export async function recordClear(userId: string, reason: "quiz" | "lab", item: string) {
+  const db = await getDb();
+  const day = await today();
+  await db.insert(schema.xpEvents).values({ userId, key: `${item}:clear:${day}`, reason, amount: 0, day }).onConflictDoNothing();
+}
+
 const BEAT_MS = 50_000; // the browser beats once a minute while a lesson is open and in view
 const MAX_DAY_MIN = 600;
 
@@ -90,7 +97,8 @@ export async function gameSummary(userId: string) {
   const day = await today();
   const h = await history(userId);
   const xp = h.events.reduce((n, e) => n + e.amount, 0);
-  const active = new Set([...h.studied.filter((s) => s.minutes > 0).map((s) => s.day), ...h.events.map((e) => e.day)]);
+  // Studying is lesson time or a quiz or lab result; claiming a quest or opening the chest is not.
+  const active = new Set([...h.studied.filter((s) => s.minutes > 0).map((s) => s.day), ...h.events.filter((e) => e.reason === "quiz" || e.reason === "lab").map((e) => e.day)]);
   const streak = foldStreak(active, h.events.filter((e) => e.reason === "chest").map((e) => e.day), day);
   const { stats, quests, chest } = dayState(h, day);
 
@@ -110,7 +118,9 @@ export async function gameSummary(userId: string) {
       .innerJoin(schema.courses, eq(schema.courses.id, schema.modules.courseId))
       .where(and(eq(schema.courses.userId, userId), eq(schema.courses.status, "ready"))),
   ]);
+  const byItem = new Map(rows.map((r) => [`${r.courseId}/${r.itemId}`, r]));
   const done = new Set(rows.filter((r) => r.status === "done").map((r) => `${r.courseId}/${r.itemId}`));
+  let threeStarLevels = 0;
   const totals = new Map<string, number>();
   for (const m of mods) totals.set(m.courseId, (totals.get(m.courseId) ?? 0) + 1);
   const kinds = new Set<string>();
@@ -119,6 +129,8 @@ export async function gameSummary(userId: string) {
   for (const m of mods) {
     const labs = (m.content as ModuleContent | null)?.labs ?? [];
     let all = done.has(`${m.courseId}/module-${m.position}`);
+    const items = [`module-${m.position}`, ...labs.map((_, k) => `module-${m.position}-lab-${k}`)].map((i) => byItem.get(`${m.courseId}/${i}`));
+    if (items.every((r) => r?.status === "done" && r.stars === 3)) threeStarLevels++; // a level's stars are its lowest item's, as on the map
     labs.forEach((lab, k) => {
       const ok = done.has(`${m.courseId}/module-${m.position}-lab-${k}`);
       all &&= ok;
@@ -132,7 +144,7 @@ export async function gameSummary(userId: string) {
   const facts: TrophyFacts = {
     labsPassed: labRows.length,
     labsNoHints: labRows.filter((r) => r.hintsUsed === 0 && !r.solutionSeen).length,
-    threeStarLevels: rows.filter((r) => /^module-\d+$/.test(r.itemId) && r.stars === 3).length,
+    threeStarLevels,
     bossesBeaten: bosses,
     coursesFinished: [...finished.values()].filter(Boolean).length,
     labKinds: kinds.size,
