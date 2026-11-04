@@ -40,9 +40,9 @@ async function Module({ params }: { params: Promise<{ id: string; n: string }> }
       {m.labs.map((lab, k) =>
         lab.kind === "logs" ? (
           <LogLab key={k} courseId={id} position={position} index={k} lab={lab} />
-        ) : (
+        ) : lab.kind === "code" ? (
           <CodeLab key={k} courseId={id} position={position} index={k} lab={lab} />
-        ),
+        ) : null, // terminal labs: TerminalLab component lands with slice 3
       )}
 
       <Quiz courseId={id} position={position} questions={m.quiz} best={m.best.stars} />
