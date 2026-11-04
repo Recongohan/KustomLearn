@@ -10,6 +10,7 @@ Status: design and spec. See [docs/SPEC.md](docs/SPEC.md).
 - [ui-ux-pro-max](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill)
 - [ponytail](https://github.com/DietrichGebert/ponytail)
 - [karpathy-guidelines](https://github.com/multica-ai/andrej-karpathy-skills)
+- [coderabbit code-review and autofix](https://github.com/coderabbitai/skills) (need the CodeRabbit CLI and `coderabbit auth login`)
 
 ## License
 MIT
