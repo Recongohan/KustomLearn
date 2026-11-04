@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
@@ -23,6 +23,11 @@ function key(): Buffer {
   }
   cachedKey = createHash("sha256").update(secret).digest();
   return cachedKey;
+}
+
+/** A separate key per purpose, derived from the app secret, so one use can't be turned against another. */
+export function deriveKey(label: string): Buffer {
+  return createHmac("sha256", key()).update(label).digest();
 }
 
 export function encrypt(plain: string): string {
