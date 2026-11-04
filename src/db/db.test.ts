@@ -12,8 +12,15 @@ describe("db", () => {
     expect(row.freezes).toBe(1);
   });
 
-  it("retries after a failed first connection instead of caching the failure", async () => {
+  it("shares one connection across separately loaded copies of the module (Next bundles)", async () => {
+    const a = await (await import("./index")).getDb();
     vi.resetModules();
+    const b = await (await import("./index")).getDb();
+    expect(b).toBe(a);
+  });
+
+  it("retries after a failed first connection instead of caching the failure", async () => {
+    (globalThis as { __kustomlearnDb?: unknown }).__kustomlearnDb = undefined;
     const { getDb } = await import("./index");
     process.env.DATABASE_URL = "not-a-database-url";
     await expect(getDb()).rejects.toThrow();
