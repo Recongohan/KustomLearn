@@ -50,7 +50,7 @@ export function safeNext(raw: string): string {
   }
 }
 
-// Login throttle: MAX_FAILS wrong passwords per client lock that client out for the rest of the window.
+// Login throttle: MAX_FAILS wrong passwords within a window lock that client out for a full window.
 // In memory, so it holds for one server process. Several instances would each count separately and need a shared store.
 const MAX_FAILS = 5;
 const WINDOW_MS = 15 * 60_000;
@@ -70,8 +70,8 @@ export function lockedFor(client: string, now = Date.now()): number {
 export function recordFailure(client: string, now = Date.now()): void {
   if (fails.size > 10_000) for (const [k, v] of fails) if (now >= v.reset) fails.delete(k);
   const entry = fails.get(client);
-  if (entry && now < entry.reset) entry.count++;
-  else fails.set(client, { count: 1, reset: now + WINDOW_MS });
+  if (!entry || now >= entry.reset) fails.set(client, { count: 1, reset: now + WINDOW_MS });
+  else if (++entry.count >= MAX_FAILS) entry.reset = now + WINDOW_MS; // the lockout runs a full window from the last failure
 }
 
 export function clearFailures(client: string): void {
