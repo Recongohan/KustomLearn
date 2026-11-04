@@ -13,25 +13,14 @@ PRs are stacked. Each targets the branch before it:
 | #2 | `m2-intake` → `m0-foundation` | Green. Codex finding (fallback usage) fixed. |
 | #3 | `m3-generation` → `m2-intake` | Green. One Codex thread is left open on purpose (null cap for pre-0002 courses; only unreleased dev DBs). The owner decides. |
 | #4 | `m4-player` → `m3-generation` | Codex finding (empty quiz) fixed. |
-| — | `m5-labs` (from `m4-player`) | Slices 1–2 done; slice 3 in progress. **No PR yet.** |
+| #5 | `m5-labs` → `m4-player` | Milestone 5 (log, code and terminal labs). |
 
 - **After #1 merges:** retarget #2 to `main`, then #3 after #2, and so on. CodeRabbit only auto-reviews PRs whose base is `main`; Codex reviews every PR.
 - **Merge flow:** fix on the lowest branch, then `git merge` upward (m0 → m2 → m3 → m4 → m5), testing each.
 - **A new session** must `subscribe_pr_activity` for PRs #1–#4 again.
 
 ## Immediate to-dos
-1. **Finish milestone 5, slice 3 (terminal labs).** Done so far, committed as WIP on `m5-labs`:
-   - `src/lib/labs/shell.ts`: a simulated shell (pure TS, in-memory file tree, pipes, redirects, globs, ~24 commands), plus `replay()` and `runChecks()`.
-   - `src/lib/labs/shell.test.ts`: passing.
-   - The `TerminalLab`, `TerminalCheck` and `PublicLab` "terminal" types in `src/lib/labs/types.ts`.
-
-   Still to do:
-   - `validateTerminalLab`: every solution command must run without "command not found", all checks must pass after replaying the solution, and at least one check must fail on the starting files. Limit file count and size.
-   - In `src/lib/ai/generate.ts`: add `terminalLabs` to the `ModuleContent` schema, plus `TERMINAL_RULES` (list the supported commands from `COMMANDS`), the `repairLab` support and a fixture lab in `fixtures.ts`.
-   - In `src/lib/generation.ts`: add `labsFor().terminal` and a `check()` branch.
-   - In `src/lib/player.ts`: in `playModule`, map the public lab with check names only, never check texts. `labSubmit` takes `{ commands: string[] }` and grades by **server-side `replay()`**, so terminal grades can't be faked. Add zod validation in `actions.ts` (≤300 commands, ≤2000 chars each).
-   - `src/components/player/TerminalLab.tsx`: scrollback, prompt `learner@lab:~$`, up/down history, a Reset button, Check, and `LabHelp` (`onUse` can be a no-op or copy the commands). Render it from `src/app/course/[id]/m/[n]/page.tsx`.
-   - Tests (generation, player), a browser click-through, then **open the milestone 5 PR** onto `m4-player`.
+1. **Milestone 5 PR is open** (`m5-labs` → `m4-player`). Watch it for Codex findings.
 2. **Then milestone 6 (gamification)**, following the owner's design reference (`docs/design/dashboard-preview.dc.html`, plus the screenshot they shared): a home dashboard with streak, rank, level/XP, Pip daily goal, quests, the mini-boss lab card, an XP chart and trophies.
 
 ## What exists (by milestone)
@@ -49,6 +38,8 @@ PRs are stacked. Each targets the branch before it:
   - **JavaScript:** QuickJS (wasm) on both sides. The server uses `@jitl/quickjs-singlefile-mjs-release-sync`; the browser uses `-browser-release-sync`.
   - **Python on the server:** Pyodide in a child process with `--permission`, an empty env, sockets patched shut, a `process.binding` shim and a 30 s kill.
   - **Python in the browser:** a Web Worker with a 10 s kill. Pyodide is served by the allowlisted route `/pyodide/[file]`.
+- **M5 slice 3:** terminal labs. `src/lib/labs/shell.ts` is a simulated shell (pure TS) used by the browser and the server. The browser sends the session's commands and the server grades by `replay()`, so terminal grades can't be faked. grep uses RE2 (`re2js`, linear time), the simulated disk is capped (2,000 entries, 2M characters) and a replay stops after 3 s. Check texts never reach the browser, only their names.
+- **Key audit (2026-11-04):** full history of every branch and PR scanned for keys; clean. GitHub secret scanning and push protection are on. `.gitignore` also ignores `app-secret` and `**/pglite/`.
 - **Stars:**
   - Quiz: 3 for a perfect first try, 2 for a first-try pass, 1 for a later pass.
   - Lab: 3 for a first check with no hints, 2 with at most one hint, 1 otherwise or after the solution.
@@ -64,10 +55,11 @@ PRs are stacked. Each targets the branch before it:
 - Keep replies short and say what wasn't checked.
 
 ## Backlog from the owner (later, not now)
+- Terminal tab completion (not built).
 - A motion pass across the app: animated typing (the describe box on /new and text appearing), visual feedback on every input and action, and animation wherever it fits, each with a reduced-motion fallback.
 
 ## Known shortcuts (`grep -rn "shortcut:" src`)
-- **Faked results:** for quiz instant-check and for log and code labs, the browser reports its results, so a learner could fake them. Fine for self-study; re-run on the server before any leaderboard. Terminal labs will be replayed on the server.
+- **Faked results:** for quiz instant-check and for log and code labs, the browser reports its results, so a learner could fake them. Fine for self-study; re-run on the server before any leaderboard. Terminal labs are replayed on the server.
 - **Estimate:** `estimate.ts` prices all input at the full rate and its token constants are untuned. There is no real Claude run yet (no key).
 - **Audit:** 10 npm audit findings already existed before this work, in Sentry and Inngest (one high: an old zod inside Inngest). New dependencies added none.
 

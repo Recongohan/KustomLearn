@@ -193,7 +193,7 @@ export function TerminalLab({ courseId, position, index, lab }: Props) {
             autoCapitalize="off"
             autoCorrect="off"
             autoComplete="off"
-            className="h-11 min-w-0 flex-1 bg-transparent text-base outline-none md:text-sm"
+            className="h-11 min-w-0 flex-1 bg-transparent text-base kl-term-input md:text-sm"
           />
         </form>
       </div>
@@ -214,7 +214,7 @@ export function TerminalLab({ courseId, position, index, lab }: Props) {
         </motion.p>
       )}
 
-      {verdict && <Verdict verdict={verdict} courseId={courseId} />}
+      {verdict && <Verdict verdict={verdict} courseId={courseId} chips={false} />}
 
       <LabHelp hints={hints} total={lab.hints} canSolve={canSolve} solution={solution} done={done} pending={pending} onHint={hint} onReveal={reveal} onUse={useSolution} useLabel="Run it in the terminal" />
     </section>

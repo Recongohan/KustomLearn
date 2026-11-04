@@ -6,10 +6,10 @@ import { Markdown } from "./Markdown";
 const spring = { type: "spring", stiffness: 480, damping: 28 } as const;
 
 /** The graded tests, one chip each, and what clearing the lab opened. */
-export function Verdict({ verdict, courseId }: { verdict: LabResult; courseId: string }) {
+export function Verdict({ verdict, courseId, chips = true }: { verdict: LabResult; courseId: string; chips?: boolean }) {
   return (
     <div className="flex flex-col gap-3" aria-live="polite">
-      <ul className={`grid gap-2 ${verdict.tests.length === 3 ? "sm:grid-cols-3" : "sm:grid-cols-2 lg:grid-cols-4"}`} aria-label="Tests">
+      {chips && <ul className={`grid gap-2 ${verdict.tests.length === 3 ? "sm:grid-cols-3" : "sm:grid-cols-2 lg:grid-cols-4"}`} aria-label="Tests">
         {verdict.tests.map((t, i) => (
           <motion.li
             key={`${t.name}-${i}`}
@@ -23,7 +23,7 @@ export function Verdict({ verdict, courseId }: { verdict: LabResult; courseId: s
             <span className="sr-only">{t.pass ? "passed" : "failed"}</span>
           </motion.li>
         ))}
-      </ul>
+      </ul>}
       <p className="font-display text-lg font-extrabold">
         {verdict.passed ? (verdict.stars === 3 ? "Perfect, first try with no hints" : "Lab cleared") : `${verdict.tests.filter((t) => t.pass).length} of ${verdict.tests.length} tests pass`}
       </p>
