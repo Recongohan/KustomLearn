@@ -18,7 +18,7 @@ async function Course({ id }: { id: Promise<string> }) {
   if (progress.status === "ready") {
     const map = (await courseMap(courseId, currentUserId()))!;
     const today = new Date().toISOString().slice(0, 10);
-    return <WorldMap id={courseId} title={map.title} intent={map.intent} category={map.category} capstone={map.variation.capstone} modules={map.modules} today={today} />;
+    return <WorldMap id={courseId} title={map.title} intent={map.intent} category={map.category} capstone={map.variation.capstone} hoursPerWeek={map.variation.hoursPerWeek} modules={map.modules} today={today} />;
   }
   const db = await getDb();
   const [course] = await db.select().from(schema.courses).where(eq(schema.courses.id, courseId));
@@ -27,7 +27,7 @@ async function Course({ id }: { id: Promise<string> }) {
 
 export default function CoursePage({ params }: PageProps<"/course/[id]">) {
   return (
-    <div className="mx-auto max-w-4xl">
+    <div className="mx-auto max-w-6xl">
       <Suspense fallback={<div className="h-64 animate-pulse rounded-3xl bg-panel" />}>
         <Course id={params.then((p) => p.id)} />
       </Suspense>

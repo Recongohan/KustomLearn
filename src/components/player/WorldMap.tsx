@@ -3,7 +3,7 @@ import Link from "next/link";
 import { motion } from "motion/react";
 import type { MapModule } from "@/lib/player";
 
-type Props = { id: string; title: string; intent: string; category: string; capstone: boolean; modules: MapModule[]; today: string };
+type Props = { id: string; title: string; intent: string; category: string; capstone: boolean; hoursPerWeek: number; modules: MapModule[]; today: string };
 
 const spring = { type: "spring", stiffness: 420, damping: 28 } as const;
 const fmt = new Intl.DateTimeFormat("en", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
@@ -25,7 +25,7 @@ function due(m: MapModule, today: string) {
   return { text: formatDay(m.scheduledOn), tone: "text-muted" };
 }
 
-export function WorldMap({ id, title, intent, category, capstone, modules, today }: Props) {
+export function WorldMap({ id, title, intent, category, capstone, hoursPerWeek, modules, today }: Props) {
   const stars = modules.reduce((n, m) => n + m.stars, 0);
   const current = modules.find((m) => m.unlocked && !m.done);
   const cleared = modules.filter((m) => m.done).length;
@@ -62,6 +62,7 @@ export function WorldMap({ id, title, intent, category, capstone, modules, today
         )}
       </section>
 
+      <div className="flex flex-col gap-6 lg:grid lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start">
       <section aria-labelledby="map-h" className="rounded-3xl border border-line bg-panel p-5 md:p-6">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <h2 id="map-h" className="font-display text-xl font-extrabold">World map</h2>
@@ -111,6 +112,7 @@ export function WorldMap({ id, title, intent, category, capstone, modules, today
                 </div>
                 <div className="pt-2.5 pb-4">
                   <p className={`font-semibold leading-snug ${m.unlocked ? "" : "text-muted"} ${now ? "text-blue-ink" : ""}`}>{m.title}</p>
+                  {m.summary && <p className="mt-0.5 hidden max-w-prose text-sm text-muted md:block">{m.summary}</p>}
                   <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
                     <span className="flex gap-0.5" aria-hidden="true">
                       {[0, 1, 2].map((k) => <Star key={k} on={k < m.stars} />)}
@@ -123,6 +125,65 @@ export function WorldMap({ id, title, intent, category, capstone, modules, today
           })}
         </ol>
       </section>
+      <Schedule id={id} modules={modules} today={today} hoursPerWeek={hoursPerWeek} />
+      </div>
     </div>
+  );
+}
+
+const DAY = 86_400_000;
+const dayNum = (d: string) => Date.parse(`${d}T00:00:00Z`) / DAY;
+const short = new Intl.DateTimeFormat("en", { day: "numeric", month: "short", timeZone: "UTC" });
+const fromNum = (n: number) => short.format(new Date(n * DAY));
+
+/** The dated plan, week by week, with this week marked. Sits beside the map on wide screens, under it on phones. */
+function Schedule({ id, modules, today, hoursPerWeek }: { id: string; modules: MapModule[]; today: string; hoursPerWeek: number }) {
+  const dated = modules.filter((m) => m.scheduledOn);
+  if (!dated.length) return null;
+  const start = dayNum(dated[0].scheduledOn!);
+  const now = dayNum(today);
+  const weeks = new Map<number, MapModule[]>();
+  for (const m of dated) {
+    const w = Math.floor((dayNum(m.scheduledOn!) - start) / 7);
+    weeks.set(w, [...(weeks.get(w) ?? []), m]);
+  }
+  const thisWeek = Math.floor((now - start) / 7);
+  const overdue = dated.filter((m) => !m.done && m.scheduledOn! < today).length;
+  const last = dated[dated.length - 1].scheduledOn!;
+
+  return (
+    <aside aria-labelledby="plan-h" className="rounded-3xl border border-line bg-panel p-5 md:p-6 lg:sticky lg:top-6">
+      <h2 id="plan-h" className="font-display text-xl font-extrabold">Schedule</h2>
+      <p className="mt-1 text-sm text-muted">
+        {hoursPerWeek} h a week · ends {formatDay(last)}
+        {overdue > 0 && <> · <span className="text-pink-ink">{overdue} behind</span></>}
+      </p>
+      <ol className="mt-4 flex flex-col gap-2">
+        {[...weeks.entries()].map(([w, ms]) => {
+          const current = w === thisWeek;
+          return (
+            <li key={w} className={`rounded-2xl p-3 ${current ? "bg-blue/10 ring-2 ring-blue/40" : "bg-panel-2"}`}>
+              <p className="flex items-baseline justify-between gap-2 text-sm">
+                <span className={`font-semibold ${current ? "text-blue-ink" : ""}`}>{current ? "This week" : `Week ${w + 1}`}</span>
+                <span className="tabular-nums text-muted">{fromNum(start + w * 7)} – {fromNum(start + w * 7 + 6)}</span>
+              </p>
+              <ul className="mt-2 flex flex-col gap-1">
+                {ms.map((m) => (
+                  <li key={m.position} className="flex items-center gap-2 text-sm">
+                    <span aria-hidden="true" className={`h-2.5 w-2.5 shrink-0 rounded-full ${m.done ? "bg-green" : m.unlocked ? "bg-blue" : "bg-track"}`} />
+                    {m.unlocked ? (
+                      <Link href={`/course/${id}/m/${m.position + 1}`} className="min-w-0 flex-1 truncate py-1 hover:underline">{m.title}</Link>
+                    ) : (
+                      <span className="min-w-0 flex-1 truncate py-1 text-muted">{m.title}</span>
+                    )}
+                    <span className="shrink-0 text-muted">{m.done ? "Done" : formatDay(m.scheduledOn!).split(",")[0]}</span>
+                  </li>
+                ))}
+              </ul>
+            </li>
+          );
+        })}
+      </ol>
+    </aside>
   );
 }
