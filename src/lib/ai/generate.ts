@@ -3,7 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import type { Variation } from "./intake";
-import { billedUsage, type PricedModel } from "./pricing";
+import { billedUsage, fallbackParams, type PricedModel } from "./pricing";
 
 export const Outline = z.object({
   title: z.string(),
@@ -41,16 +41,27 @@ Path: ${c.variation.name} (${c.variation.pitch})
 Level: ${c.variation.level}. Timeline: ${c.variation.weeks} weeks at ${c.variation.hoursPerWeek} hours a week.
 Outcomes: ${c.variation.outcomes.join("; ")}`;
 
-async function call<T extends z.ZodType>(schema: T, prompt: string, opts: { apiKey: string; model: PricedModel; maxTokens: number }) {
+// `shared` is the same for every module of a course, so it is cached and later module calls read it cheaply.
+async function call<T extends z.ZodType>(schema: T, prompt: string | { shared: string; task: string }, opts: { apiKey: string; model: PricedModel; maxTokens: number }) {
   const client = new Anthropic({ apiKey: opts.apiKey, timeout: 10 * 60_000 });
   const res = await client.beta.messages.parse({
     model: opts.model,
     max_tokens: opts.maxTokens,
-    betas: ["server-side-fallback-2026-07-01"],
-    fallbacks: "default", // security courses can trip cyber classifiers; reroute instead of failing
+    ...fallbackParams(opts.model), // security courses can trip cyber classifiers; reroute instead of failing
     output_config: { effort: "medium", format: betaZodOutputFormat(schema) },
     system: SYSTEM,
-    messages: [{ role: "user", content: prompt }],
+    messages: [
+      {
+        role: "user",
+        content:
+          typeof prompt === "string"
+            ? prompt
+            : [
+                { type: "text", text: prompt.shared, cache_control: { type: "ephemeral" } },
+                { type: "text", text: prompt.task },
+              ],
+      },
+    ],
   });
   const usage = billedUsage(res.usage, opts.model);
   if (res.stop_reason === "refusal") throw new GenerationError("The model declined part of this course.", usage);
@@ -86,17 +97,19 @@ export async function generateModule(
   const m = outline.modules[index];
   const { data, usage } = await call(
     ModuleContent,
-    `${brief(c)}
+    {
+      shared: `${brief(c)}
 
 Course outline:
-${outline.modules.map((x, i) => `${i + 1}. ${x.title}`).join("\n")}
+${outline.modules.map((x, i) => `${i + 1}. ${x.title}: ${x.summary}`).join("\n")}
 
-Write module ${index + 1}: "${m.title}". ${m.summary}
-Objectives: ${m.objectives.join("; ")}
-
+Module format:
 - sections: 3-5 lesson sections in GitHub-flavored markdown, with code blocks or commands where they help.
 - diagram: one Mermaid flowchart or sequence diagram if it makes an idea clearer, otherwise "".
 - quiz: 4-6 multiple-choice questions with 4 choices each; answer is the 0-based index; explanation says why.`,
+      task: `Write module ${index + 1}: "${m.title}". ${m.summary}
+Objectives: ${m.objectives.join("; ")}`,
+    },
     { ...opts, maxTokens },
   );
   if (data.quiz.some((q) => q.choices.length < 2 || q.answer < 0 || q.answer >= q.choices.length)) {

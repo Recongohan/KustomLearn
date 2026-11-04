@@ -4,7 +4,7 @@ import { getDb, schema } from "@/db";
 import { GenerationError, STEP_MAX_OUTPUT, generateModule, generateOutline, type CourseBrief, type Outline, type Usage } from "./ai/generate";
 import { IN_PER_CALL } from "./estimate";
 import type { Variation } from "./ai/intake";
-import type { PricedModel } from "./ai/pricing";
+import { writerFor, type PricedModel } from "./ai/pricing";
 import { getAiCredentials } from "./settings";
 
 // Each step is idempotent: Inngest retries a failed step, so a step that already finished just returns.
@@ -105,7 +105,8 @@ export async function runModule(courseId: string, position: number): Promise<Ste
   const room = roomLeft(course);
   if (room == null) return pause(courseId);
 
-  const { apiKey, model } = await credentials(course.userId);
+  const { apiKey, model: chosen } = await credentials(course.userId);
+  const model = writerFor(chosen);
   const reason = `Write module ${position + 1}: ${mod.title}`;
   let result;
   try {

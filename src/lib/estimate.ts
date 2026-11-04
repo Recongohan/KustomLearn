@@ -1,4 +1,4 @@
-import { costMicros, type PricedModel } from "./ai/pricing";
+import { costMicros, writerFor, type PricedModel } from "./ai/pricing";
 import type { Variation } from "./ai/intake";
 
 // Rough per-item token budgets for generation; retune once real runs are logged.
@@ -28,11 +28,12 @@ export function formatTokens(n: number): string {
 export function estimate(v: Pick<Variation, "modules" | "labs" | "capstone">, model: PricedModel): Estimate {
   const labs = v.labs.code + v.labs.terminal + v.labs.logs;
   const calls = 1 + v.modules + (v.capstone ? 1 : 0);
-  const outputTokens = Math.round(
-    (OUT.outline + v.modules * (OUT.lesson + OUT.quiz) + labs * OUT.lab + (v.capstone ? OUT.capstone : 0)) * (1 + REPAIR_RESERVE),
-  );
+  const writing = Math.round((v.modules * (OUT.lesson + OUT.quiz) + labs * OUT.lab + (v.capstone ? OUT.capstone : 0)) * (1 + REPAIR_RESERVE));
+  const outputTokens = OUT.outline + writing;
   const inputTokens = calls * IN_PER_CALL;
-  const mid = costMicros(model, inputTokens, outputTokens);
+  // The outline is planned on the chosen model, everything after it is written by writerFor(model).
+  // shortcut: prices all input at the full rate, ignoring cache reads; retune from logged runs.
+  const mid = costMicros(model, IN_PER_CALL, OUT.outline) + costMicros(writerFor(model), inputTokens - IN_PER_CALL, writing);
   const total = inputTokens + outputTokens;
   const range = (x: number, f: number) => Math.round(x * f);
   return {

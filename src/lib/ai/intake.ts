@@ -2,7 +2,7 @@ import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
-import { billedUsage, type PricedModel } from "./pricing";
+import { billedUsage, fallbackParams, type PricedModel } from "./pricing";
 
 export const Variation = z.object({
   name: z.string(),
@@ -70,8 +70,7 @@ export async function understand(request: string, opts: { apiKey: string; model:
   const res = await client.beta.messages.parse({
     model: opts.model,
     max_tokens: 4000,
-    betas: ["server-side-fallback-2026-07-01"],
-    fallbacks: "default", // security topics can trip cyber classifiers; reroute instead of failing
+    ...fallbackParams(opts.model), // security topics can trip cyber classifiers; reroute instead of failing
     output_config: { effort: "low", format: betaZodOutputFormat(Intake) },
     system: SYSTEM,
     messages: [{ role: "user", content: request }],
