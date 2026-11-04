@@ -98,6 +98,11 @@ describe("code lab validation", () => {
     expect(values[2]).toBe('"blocked"');
     expect(values[3]).toBe('"blocked"');
   }, 60_000);
+  it("caps what Python returns and prints before building it", async () => {
+    const [r] = await runPython(["def big():\n    for _ in range(200000):\n        print('x' * 50)\n    return ['y' * 1000] * 5000\n"], "big", ["[]"]);
+    expect("results" in r && r.results[0].value!.length).toBe(20_000);
+    expect("stdout" in r && r.stdout.length).toBeLessThanOrEqual(20_000);
+  }, 60_000);
 
   it("accepts a terminal lab whose solution turns every check green, and rejects broken ones", () => {
     const t = FAKE_TERMINAL_LAB;

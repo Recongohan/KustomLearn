@@ -17,7 +17,19 @@ export function canonical(json: string): string {
 export const PY_HARNESS = `
 import json, sys, io
 def __run():
-    out = io.StringIO()
+    class Capped(io.StringIO):  # stops storing once full, so a print loop can't grow without bound
+        def write(self, s):
+            room = ${MAX_OUT} - self.tell()
+            return super().write(s[:room]) if room > 0 else len(s)
+    def dumps(v):  # encodes piece by piece and stops at the cap instead of building a huge string first
+        parts, n = [], 0
+        for p in json.JSONEncoder(sort_keys=True, separators=(",", ":")).iterencode(v):
+            parts.append(p)
+            n += len(p)
+            if n > ${MAX_OUT}:
+                break
+        return "".join(parts)[:${MAX_OUT}]
+    out = Capped()
     sys.stdout = out
     results = []
     ns = {"__name__": "__lab__"}
@@ -31,8 +43,7 @@ def __run():
         return json.dumps({"results": [{"value": None, "error": type(e).__name__ + ": " + str(e)} for _ in json.loads(__tests)], "stdout": out.getvalue()[:${MAX_OUT}]})
     for args in json.loads(__tests):
         try:
-            v = json.dumps(fn(*args), sort_keys=True, separators=(",", ":"))
-            results.append({"value": v[:${MAX_OUT}], "error": None})
+            results.append({"value": dumps(fn(*args)), "error": None})
         except BaseException as e:
             results.append({"value": None, "error": type(e).__name__ + ": " + str(e)})
     sys.stdout = sys.__stdout__

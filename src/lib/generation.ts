@@ -111,15 +111,17 @@ export async function runModule(courseId: string, position: number): Promise<Ste
   const { apiKey, model: chosen } = await credentials(course.userId);
   const model = writerFor(chosen);
   const reason = `Write module ${position + 1}: ${mod.title}`;
+  const counts = labsFor(course, position); // the learner chose these; extra labs the model returns are ignored
   let result;
   try {
-    result = await generateModule(briefOf(course), plan, position, labsFor(course, position), { apiKey, model, maxTokens: room });
+    result = await generateModule(briefOf(course), plan, position, counts, { apiKey, model, maxTokens: room });
   } catch (err) {
     return chargeFailure(err, course, model, room, STEP_MAX_OUTPUT.module, reason);
   }
   const { data, usage } = result;
   const labs: StoredLab[] = [];
-  for (const [k, lab] of [...data.labs, ...data.codeLabs, ...data.terminalLabs].entries()) {
+  const wanted = [...data.labs.slice(0, counts.logs), ...data.codeLabs.slice(0, counts.code), ...data.terminalLabs.slice(0, counts.terminal)];
+  for (const [k, lab] of wanted.entries()) {
     const ok = await checkOrRepair(course, model, lab, `${reason}, lab ${k + 1}`, usage.inputTokens + usage.outputTokens);
     if (ok) labs.push(ok);
   }
