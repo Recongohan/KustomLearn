@@ -28,4 +28,6 @@ Open http://localhost:3000 and add your Anthropic key in Settings. Data lives in
 docker compose up  # same thing in containers, data in a volume
 ```
 
+**On a server other people can reach** (a cloud VM, a shared box): set `APP_PASSWORD` so every page asks for it, and serve over HTTPS. With `docker compose`, the job runner runs in dev mode, so for a public server also give Inngest a signing key (Inngest Cloud or a self-hosted `inngest start`).
+
 **Cloud:** run the image `ghcr.io/recongohan/kustomlearn` with `DATABASE_URL` (Neon), `APP_SECRET`, and `INNGEST_EVENT_KEY` and `INNGEST_SIGNING_KEY` from Inngest Cloud. See `.env.example`.
