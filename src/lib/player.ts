@@ -4,7 +4,7 @@ import { getDb, schema } from "@/db";
 import type { ModuleContent, Outline } from "./ai/generate";
 import type { Variation } from "./ai/intake";
 import { gradeCode, gradeResult } from "./labs/grade";
-import type { LabTest, PublicLab, ResultSet } from "./labs/types";
+import type { LabTest, PublicLab, ResultSet, StoredLab } from "./labs/types";
 
 // The course player. Grading is deterministic and runs here; quiz answers never reach the browser before a submit.
 
@@ -27,7 +27,8 @@ export function starsFor(g: Graded, attempt: number): number {
 
 const itemId = (position: number) => `module-${position}`;
 const labItem = (position: number, lab: number) => `module-${position}-lab-${lab}`;
-const SOLVE_AFTER = 3; // failed checks before the solution can be opened without using every hint
+const SOLVE_AFTER = 3;
+const solutionText = (lab: StoredLab) => (Array.isArray(lab.solution) ? lab.solution.join("\n") : lab.solution); // terminal: one command per line // failed checks before the solution can be opened without using every hint
 
 /** 3 stars: passed on the first check with no hints. 2: at most one hint. 1: passed any other way, or after the solution. */
 export function labStars(passed: boolean, attempt: number, hintsUsed: number, solutionSeen: boolean): number {
@@ -125,7 +126,9 @@ export async function playModule(courseId: string, userId: string, position: num
       const pub: PublicLab =
         lab.kind === "logs"
           ? { kind: "logs", title: lab.title, task: lab.task, setup: lab.setup, starter: lab.starter, hints: lab.hints.length }
-          : { kind: "code", title: lab.title, task: lab.task, language: lab.language, entry: lab.entry, starter: lab.starter, tests: lab.tests, hints: lab.hints.length };
+          : lab.kind === "code"
+            ? { kind: "code", title: lab.title, task: lab.task, language: lab.language, entry: lab.entry, starter: lab.starter, tests: lab.tests, hints: lab.hints.length }
+            : { kind: "terminal", title: lab.title, task: lab.task, files: lab.files, checks: lab.checks.map((c) => c.name), hints: lab.hints.length }; // check texts stay server-side
       return {
         ...pub,
         state: {
@@ -134,7 +137,7 @@ export async function playModule(courseId: string, userId: string, position: num
           attempts: row?.attempts ?? 0,
           hintsShown: lab.hints.slice(0, used),
           canSolve: used >= lab.hints.length || (row?.attempts ?? 0) >= SOLVE_AFTER,
-          solution: row?.solutionSeen ? { solution: lab.solution, walkthrough: lab.walkthrough } : null,
+          solution: row?.solutionSeen ? { solution: solutionText(lab), walkthrough: lab.walkthrough } : null,
         },
       };
     }),
@@ -241,7 +244,7 @@ export async function labSolution(courseId: string, userId: string, position: nu
   const used = ctx.row?.hintsUsed ?? 0;
   if (used < ctx.lab.hints.length && (ctx.row?.attempts ?? 0) < SOLVE_AFTER) return null;
   await saveProgress(userId, courseId, ctx.item, { status: ctx.row?.status ?? "started", solutionSeen: 1 });
-  return { solution: ctx.lab.solution, walkthrough: ctx.lab.walkthrough };
+  return { solution: solutionText(ctx.lab), walkthrough: ctx.lab.walkthrough };
 }
 
 export type LabResult = { tests: LabTest[]; passed: boolean; stars: number; best: number; canSolve: boolean; next: number | null; levelDone: boolean };

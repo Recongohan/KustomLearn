@@ -429,7 +429,7 @@ export function exec(sh: Shell, line: string): Result {
       const argv = cmd.argv.flatMap((w) => expand(sh, w));
       const name = argv[0] as (typeof COMMANDS)[number];
       const fn = Object.hasOwn(run, name) ? run[name] : null;
-      const r = fn ? fn({ sh, args: argv.slice(1), stdin }) : fail(`${argv[0]}: command not found`, 127);
+      const r: Result = fn ? fn({ sh, args: argv.slice(1), stdin }) : fail(`${argv[0]}: command not found`, 127);
       err += r.err;
       code = r.code;
       let text = r.out;
