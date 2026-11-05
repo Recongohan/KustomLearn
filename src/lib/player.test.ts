@@ -188,3 +188,19 @@ describe("labs", () => {
     expect(done).toMatchObject({ passed: true });
   }, 60_000);
 });
+
+describe("concurrent submits", () => {
+  it("count each attempt once, so only one can be the first try", async () => {
+    const db = await getDb();
+    const variation = { ...fakeIntake("soc").variations[0], modules: 1, labs: { code: 0, terminal: 0, logs: 0 }, weeks: 1 };
+    const [c] = await db.insert(schema.courses).values({ userId: "local", title: "t", request: "soc", intent: "i", category: "c", variation, budgetCapTokens: 1_000_000 }).returning();
+    await runOutline(c.id);
+    await runModule(c.id, 0);
+    await finalize(c.id);
+    const [a, b] = await Promise.all([submitQuiz(c.id, "local", 0, [1]), submitQuiz(c.id, "local", 0, [1])]);
+    expect([a!.stars, b!.stars].sort()).toEqual([1, 3]); // one first try (3 stars), one second try (1 star)
+    expect([a!.best, b!.best]).toContain(3);
+    const map = (await courseMap(c.id, "local"))!;
+    expect(map.modules[0]).toMatchObject({ done: true, stars: 3 });
+  });
+});
