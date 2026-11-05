@@ -114,3 +114,5 @@ body {
 /* Chart bars rise from the baseline. */
 @keyframes kl-rise-bar { from { transform: scaleY(0); } }
 .kl-bar { transform-origin: bottom; animation: kl-rise-bar 0.7s cubic-bezier(0.22, 1, 0.36, 1) both; }
+/* The global rule shortens animations but keeps inline delays, which would hide sections for a moment: drop it. */
+@media (prefers-reduced-motion: reduce) { .kl-in, .kl-grow, .kl-bar { animation: none; } }
