@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { Pip } from "@/components/Pip";
 import type { Variation } from "@/lib/ai/intake";
@@ -28,6 +28,17 @@ export function NewCourse({ model }: { model: PricedModel }) {
   const [draft, setDraft] = useState<Variation | null>(null);
   const [thinking, startThinking] = useTransition();
   const [saving, startSaving] = useTransition();
+  const heading = useRef<HTMLHeadingElement>(null);
+  const textarea = useRef<HTMLTextAreaElement>(null);
+  const hadResult = useRef(false);
+
+  // The view swaps out under the keyboard focus: move it to the new view's heading, or back to the question.
+  useEffect(() => {
+    if (thinking) return;
+    if (result) heading.current?.focus();
+    else if (hadResult.current) textarea.current?.focus();
+    hadResult.current = !!result;
+  }, [thinking, result]);
 
   const submit = () =>
     startThinking(async () => {
@@ -43,7 +54,8 @@ export function NewCourse({ model }: { model: PricedModel }) {
     setPicked(i);
     setDraft(structuredClone(result!.intake.variations[i]));
     // On phones the tuning panel sits below all three cards; bring it into view.
-    setTimeout(() => document.getElementById("tune")?.scrollIntoView({ behavior: "smooth", block: "start" }), 150);
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    setTimeout(() => document.getElementById("tune")?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" }), 150);
   };
 
   const lockIn = () =>
@@ -63,6 +75,7 @@ export function NewCourse({ model }: { model: PricedModel }) {
         </div>
         <label htmlFor="request" className="text-muted">Describe it like you&apos;d tell a friend: what, why, and how much time you have.</label>
         <textarea
+          ref={textarea}
           id="request"
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -99,7 +112,7 @@ export function NewCourse({ model }: { model: PricedModel }) {
   if (!intake.inScope)
     return (
       <div className="flex flex-col items-start gap-4 rounded-3xl border border-line bg-panel p-6">
-        <h1 className="font-display text-2xl font-extrabold">That one&apos;s outside my world</h1>
+        <h1 ref={heading} tabIndex={-1} className="font-display text-2xl font-extrabold outline-none">That one&apos;s outside my world</h1>
         <p className="text-muted">{intake.outOfScopeReason}</p>
         <button type="button" onClick={() => setResult(null)} className="h-12 rounded-2xl bg-text px-5 font-bold text-bg">Try another topic</button>
       </div>
@@ -115,7 +128,7 @@ export function NewCourse({ model }: { model: PricedModel }) {
           <span className="text-muted">Designed with {formatTokens(result.tokens)} tokens</span>
           <button type="button" onClick={() => setResult(null)} className="ml-auto min-h-11 px-2 font-medium text-muted underline-offset-4 hover:underline">Change my answer</button>
         </div>
-        <h1 className="font-display text-3xl font-extrabold leading-tight tracking-tight md:text-4xl">{intake.intent}</h1>
+        <h1 ref={heading} tabIndex={-1} className="font-display text-3xl font-extrabold leading-tight tracking-tight outline-none md:text-4xl">{intake.intent}</h1>
         <p className="text-muted">Pick a path. You can tune it before anything is built.</p>
       </motion.header>
 
