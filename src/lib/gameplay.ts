@@ -71,7 +71,7 @@ function dayState(h: Awaited<ReturnType<typeof history>>, day: string) {
   const claimed = new Set(on.filter((e) => e.key.startsWith(`quest:${day}:`)).map((e) => e.key.split(":")[2]));
   const week = weekStart(day);
   const weekLabs = new Set(h.events.filter((e) => e.reason === "lab" && e.day >= week && e.day <= day).map((e) => labItemOf(e.key))).size;
-  const chest = { have: Math.min(weekLabs, CHEST.labs), goal: CHEST.labs, xp: CHEST.xp, claimed: h.events.some((e) => e.key === `chest:${week}`) };
+  const chest = { week, have: Math.min(weekLabs, CHEST.labs), goal: CHEST.labs, xp: CHEST.xp, claimed: h.events.some((e) => e.key === `chest:${week}`) };
   return { stats, quests: questsFor(stats, claimed), chest, week };
 }
 

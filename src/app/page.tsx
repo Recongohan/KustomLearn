@@ -116,7 +116,7 @@ async function Home() {
 
       <div className="grid gap-5 lg:grid-cols-2">
         <Panel title="Today's quests" aside={<Link href="/quests" className="font-semibold text-blue-ink underline-offset-4 hover:underline">Weekly chest {g.chest.have}/{g.chest.goal}</Link>} delay={240}>
-          <Quests quests={g.quests} chest={g.chest} />
+          <Quests key={`${g.day}/${g.chest.week}`} quests={g.quests} chest={g.chest} />
         </Panel>
         {c ? <BossCard c={c} delay={300} /> : <Panel title="Mini-bosses" delay={300}><p className="text-muted">Bosses appear once a course is ready.</p></Panel>}
       </div>

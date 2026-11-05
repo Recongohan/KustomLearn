@@ -45,7 +45,7 @@ async function Ladder() {
           <p className="text-muted">
             {g.streak.days}-day streak{next ? ` · ${next.name} at ${next.from} days` : " · the top rank"}
           </p>
-          {next && <div className="max-w-md"><Bar value={g.streak.days - cur.from} of={next.from - cur.from} color={RANK_COLORS[r.tier + 1]} h={12} label={`Streak days to ${next.name}`} /></div>}
+          {next && <div className="max-w-md"><Bar value={Math.max(0, g.streak.days - cur.from)} of={next.from - cur.from} color={RANK_COLORS[r.tier + 1]} h={12} label={`Streak days to ${next.name}`} /></div>}
           {next && <p className="text-sm">Study {r.next!.in} more {r.next!.in === 1 ? "day" : "days"} in a row to reach {next.name}: {next.reward.toLowerCase()}.</p>}
         </div>
       </Panel>
