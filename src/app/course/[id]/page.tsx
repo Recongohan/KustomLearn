@@ -24,7 +24,8 @@ async function parentOf(courseId: string) {
 async function Course({ id }: { id: Promise<string> }) {
   await connection();
   const courseId = await id;
-  const progress = /^[0-9a-f-]{36}$/.test(courseId) ? await progressOf(courseId, currentUserId()) : null;
+  const userId = currentUserId();
+  const progress = /^[0-9a-f-]{36}$/.test(courseId) ? await progressOf(courseId, userId) : null;
   if (!progress) notFound();
   if (progress.status === "ready") {
     const [map, { model }, parent] = await Promise.all([courseMap(courseId, currentUserId()).then((m) => m!), getSettings(), parentOf(courseId)]);
@@ -51,7 +52,8 @@ async function Course({ id }: { id: Promise<string> }) {
     );
   }
   const db = await getDb();
-  const [course] = await db.select().from(schema.courses).where(eq(schema.courses.id, courseId));
+  const [course] = await db.select().from(schema.courses).where(and(eq(schema.courses.id, courseId), eq(schema.courses.userId, userId)));
+  if (!course) notFound();
   return <CourseLive id={courseId} intent={course.intent} category={course.category} variation={course.variation as Variation} initial={progress} />;
 }
 

@@ -4,8 +4,10 @@ import { z } from "zod";
 import { getDb, schema } from "@/db";
 import { inngest } from "@/inngest/client";
 import { progressOf, type Progress } from "@/lib/generation";
-import { currentUserId, getApiKey, getSettings } from "@/lib/settings";
+import { currentUserId, getAiCredentials, getApiKey, getSettings } from "@/lib/settings";
 import { createBranch, MAX_INSTRUCTION } from "@/lib/branch";
+import { estimate } from "@/lib/estimate";
+import type { Variation } from "@/lib/ai/intake";
 
 const Id = z.string().uuid();
 
@@ -28,7 +30,8 @@ export async function startGeneration(courseId: string, raiseCap = false): Promi
     .where(and(eq(schema.courses.id, id.data), eq(schema.courses.userId, userId), inArray(schema.courses.status, ["draft", "partial", "failed"])));
   if (!course) return { ok: false, message: "This course is already building or finished." };
 
-  const cap = course.budgetCapTokens ?? 0;
+  // Courses from before token caps existed have none: use the same estimate the course page shows.
+  const cap = course.budgetCapTokens ?? estimate(course.variation as Variation, (await getAiCredentials(userId)).model).capTokens;
   await db
     .update(schema.courses)
     .set({ status: "generating", statusNote: null, budgetCapTokens: raiseCap ? Math.round(Math.max(cap, course.spentTokens) * 1.3) : cap })
@@ -36,7 +39,7 @@ export async function startGeneration(courseId: string, raiseCap = false): Promi
   try {
     await inngest.send({ name: "course/generate", data: { courseId: course.id } });
   } catch {
-    await db.update(schema.courses).set({ status: course.status, statusNote: course.statusNote }).where(eq(schema.courses.id, course.id));
+    await db.update(schema.courses).set({ status: course.status, statusNote: course.statusNote, budgetCapTokens: course.budgetCapTokens }).where(eq(schema.courses.id, course.id));
     return { ok: false, message: "The job runner isn't reachable. Start the app with `npm run dev` or `docker compose up`." };
   }
   return { ok: true };

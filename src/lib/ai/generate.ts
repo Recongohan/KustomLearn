@@ -6,6 +6,7 @@ import type { Variation } from "./intake";
 import { COMMANDS } from "../labs/shell";
 import { CodeLab, LogsLab, TerminalLab, type StoredLab } from "../labs/types";
 import { billedUsage, fallbackParams, type PricedModel } from "./pricing";
+import { parseOutput, STRUCTURED_BETA } from "./structured";
 
 export const Outline = z.object({
   title: z.string(),
@@ -73,11 +74,14 @@ Outcomes: ${c.variation.outcomes.join("; ")}${c.branch ? `\nNew direction from m
 // `shared` is the same for every module of a course, so it is cached and later module calls read it cheaply.
 async function call<T extends z.ZodType>(schema: T, prompt: string | { shared: string; task: string }, opts: { apiKey: string; model: PricedModel; maxTokens: number }) {
   const client = new Anthropic({ apiKey: opts.apiKey, timeout: 10 * 60_000 });
-  const res = await client.beta.messages.parse({
+  const format = betaZodOutputFormat(schema);
+  const fallback = fallbackParams(opts.model); // security courses can trip cyber classifiers; reroute instead of failing
+  const res = await client.beta.messages.create({
     model: opts.model,
     max_tokens: opts.maxTokens,
-    ...fallbackParams(opts.model), // security courses can trip cyber classifiers; reroute instead of failing
-    output_config: { effort: "medium", format: betaZodOutputFormat(schema) },
+    ...fallback,
+    betas: [...(fallback.betas ?? []), STRUCTURED_BETA],
+    output_config: { effort: "medium", format },
     system: SYSTEM,
     messages: [
       {
@@ -95,8 +99,9 @@ async function call<T extends z.ZodType>(schema: T, prompt: string | { shared: s
   const usage = billedUsage(res.usage, opts.model);
   if (res.stop_reason === "refusal") throw new GenerationError("The model declined part of this course.", usage);
   if (res.stop_reason === "max_tokens") throw new GenerationError("A step came back incomplete.", usage, true);
-  if (!res.parsed_output) throw new GenerationError("A step came back incomplete.", usage);
-  return { data: res.parsed_output as z.infer<T>, usage };
+  const data = parseOutput(res, format);
+  if (!data) throw new GenerationError("A step came back incomplete.", usage);
+  return { data: data as z.infer<T>, usage };
 }
 
 export async function generateOutline(c: CourseBrief, opts: Opts): Promise<{ data: Outline; usage: Usage }> {

@@ -139,7 +139,7 @@ function Step({ label, state }: { label: string; state: "done" | "active" | "tod
         {state === "done" ? (
           <motion.span initial={{ scale: 0 }} animate={{ scale: 1 }} transition={spring} className="grid h-7 w-7 place-items-center rounded-full bg-green text-sm font-bold text-[#06281a]" aria-label="done">✓</motion.span>
         ) : state === "active" ? (
-          <span className="h-7 w-7 animate-spin rounded-full border-[3px] border-track border-t-blue" aria-label="in progress" />
+          <span className="h-7 w-7 rounded-full motion-safe:animate-spin border-[3px] border-track border-t-blue" aria-label="in progress" />
         ) : (
           <span className="h-3 w-3 rounded-full bg-track" aria-label="waiting" />
         )}
