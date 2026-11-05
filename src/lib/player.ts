@@ -1,11 +1,13 @@
 import "server-only";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { getDb, schema } from "@/db";
 import type { ModuleContent, Outline } from "./ai/generate";
 import type { Variation } from "./ai/intake";
 import { gradeCode, gradeResult } from "./labs/grade";
 import { replay, runChecks } from "./labs/shell";
+import { isBoss, itemXp } from "./game";
+import { award, recordClear } from "./gameplay";
 import type { LabTest, PublicLab, ResultSet, StoredLab } from "./labs/types";
 
 // The course player. Grading is deterministic and runs here; quiz answers never reach the browser before a submit.
@@ -18,6 +20,16 @@ export function gradeQuiz(quiz: ModuleContent["quiz"], answers: number[]): Grade
   const correct = quiz.map((q, i) => answers[i] === q.answer);
   const score = quiz.length ? correct.filter(Boolean).length / quiz.length : 1;
   return { correct, score, passed: score >= PASS };
+}
+
+/**
+ * Pays XP once per star level reached, each under its own key, so it never depends on reading the old row:
+ * two concurrent results can't both pay, and improving later pays only the new levels.
+ */
+async function awardStars(userId: string, item: string, kind: "quiz" | "lab", best: number, boss = false) {
+  let xp = 0;
+  for (let s = 1; s <= best; s++) xp += await award(userId, `${item}:${s}`, kind, itemXp(kind, s, boss) - itemXp(kind, s - 1, boss));
+  return xp;
 }
 
 /** 3 stars: perfect on the first try. 2: passed on the first try. 1: passed later. Hints arrive with labs. */
@@ -102,7 +114,7 @@ export type PlayModule = {
   diagram: string;
   quiz: { question: string; choices: string[] }[];
   best: { stars: number; done: boolean };
-  labs: (PublicLab & { state: LabState })[];
+  labs: (PublicLab & { boss: boolean; state: LabState })[];
 };
 
 export type LabState = { done: boolean; stars: number; attempts: number; hintsShown: string[]; canSolve: boolean; solution: { solution: string; walkthrough: string } | null };
@@ -141,6 +153,7 @@ export async function playModule(courseId: string, userId: string, position: num
             : { kind: "terminal", title: lab.title, task: lab.task, files: lab.files, checks: lab.checks.map((c) => c.name), hints: lab.hints.length }; // check texts stay server-side
       return {
         ...pub,
+        boss: isBoss(position, map.modules.length, k, content.labs!.length),
         state: {
           done: row?.status === "done",
           stars: row?.stars ?? 0,
@@ -154,7 +167,7 @@ export async function playModule(courseId: string, userId: string, position: num
   };
 }
 
-export type QuizResult = Graded & { stars: number; best: number; explanations: string[]; answers: number[]; next: number | null; last: boolean };
+export type QuizResult = Graded & { stars: number; best: number; xp: number; explanations: string[]; answers: number[]; next: number | null; last: boolean };
 
 /** Grades a submitted quiz and records the attempt. Stars only ever go up. */
 export async function submitQuiz(courseId: string, userId: string, position: number, answers: number[]): Promise<QuizResult | null> {
@@ -192,10 +205,13 @@ export async function submitQuiz(courseId: string, userId: string, position: num
   const best = row.stars;
   const values = { status: row.status };
 
+  const xp = await awardStars(userId, `quiz:${courseId}:${id}`, "quiz", best);
+  if (graded.passed) await recordClear(userId, "quiz", `quiz:${courseId}:${id}`);
   return {
     ...graded,
     stars,
     best,
+    xp,
     explanations: quiz.map((q) => q.explanation),
     answers: quiz.map((q) => q.answer),
     next: await nextOpen(courseId, userId, position),
@@ -239,7 +255,7 @@ async function labContext(courseId: string, userId: string, position: number, k:
     .select()
     .from(schema.progress)
     .where(and(eq(schema.progress.userId, userId), eq(schema.progress.courseId, courseId), eq(schema.progress.itemId, item)));
-  return { lab, row, item };
+  return { lab, row, item, labs: (mod.content as ModuleContent).labs!.length };
 }
 
 /** Opens the next hint tier and returns every hint opened so far. Each one costs stars. */
@@ -261,7 +277,7 @@ export async function labSolution(courseId: string, userId: string, position: nu
   return { solution: solutionText(ctx.lab), walkthrough: ctx.lab.walkthrough };
 }
 
-export type LabResult = { tests: LabTest[]; passed: boolean; stars: number; best: number; canSolve: boolean; next: number | null; levelDone: boolean };
+export type LabResult = { tests: LabTest[]; passed: boolean; stars: number; best: number; xp: number; boss: boolean; canSolve: boolean; next: number | null; levelDone: boolean };
 
 /**
  * Grades what the learner's code produced in the browser (a query's rows, or a function's return values) against
@@ -290,13 +306,55 @@ export async function labSubmit(courseId: string, userId: string, position: numb
   await saveProgress(userId, courseId, ctx.item, { status: done ? "done" : "started", attempts: attempt, stars: best, score: passed ? 100 : (ctx.row?.score ?? 0) });
   const map = await courseMap(courseId, userId);
   const levelDone = !!map?.modules[position]?.done;
+  const boss = isBoss(position, map?.modules.length ?? 1, k, ctx.labs);
+  const xp = await awardStars(userId, `lab:${courseId}:${ctx.item}`, "lab", best, boss);
+  if (passed) await recordClear(userId, "lab", `lab:${courseId}:${ctx.item}`);
   return {
     tests,
     passed,
     stars,
     best,
+    xp,
+    boss,
     canSolve: (ctx.row?.hintsUsed ?? 0) >= ctx.lab.hints.length || attempt >= SOLVE_AFTER,
     levelDone,
     next: levelDone && position + 1 < (map?.modules.length ?? 0) ? position + 1 : null,
   };
 }
+
+/**
+ * The course the home screen leads with: the one last played (else the newest ready one), its next level,
+ * and its next unbeaten mini-boss.
+ */
+export async function homeCourse(userId: string) {
+  const db = await getDb();
+  const [last] = await db
+    .select({ id: schema.courses.id })
+    .from(schema.progress)
+    .innerJoin(schema.courses, eq(schema.courses.id, schema.progress.courseId))
+    .where(and(eq(schema.progress.userId, userId), eq(schema.courses.status, "ready")))
+    .orderBy(desc(schema.progress.updatedAt))
+    .limit(1);
+  const [newest] = last ? [last] : await db.select({ id: schema.courses.id }).from(schema.courses).where(and(eq(schema.courses.userId, userId), eq(schema.courses.status, "ready"))).orderBy(desc(schema.courses.createdAt)).limit(1);
+  if (!newest) return null;
+  const map = await courseMap(newest.id, userId);
+  if (!map) return null;
+  const [mods, rows] = await Promise.all([
+    db.select({ position: schema.modules.position, content: schema.modules.content }).from(schema.modules).where(eq(schema.modules.courseId, newest.id)).orderBy(asc(schema.modules.position)),
+    db.select().from(schema.progress).where(and(eq(schema.progress.courseId, newest.id), eq(schema.progress.userId, userId))),
+  ]);
+  const byItem = new Map(rows.map((r) => [r.itemId, r]));
+  let boss: { position: number; index: number; title: string; unlocked: boolean; attempts: number; scheduledOn: string | null } | null = null;
+  for (const m of mods) {
+    const labs = (m.content as ModuleContent | null)?.labs ?? [];
+    const k = labs.length - 1;
+    if (k < 0 || !isBoss(m.position, mods.length, k, labs.length)) continue;
+    const row = byItem.get(labItem(m.position, k));
+    if (row?.status === "done") continue;
+    const entry = map.modules[m.position];
+    boss = { position: m.position, index: k, title: labs[k].title, unlocked: entry.unlocked, attempts: row?.attempts ?? 0, scheduledOn: entry.scheduledOn };
+    break;
+  }
+  return { id: newest.id, title: map.title, modules: map.modules, next: map.modules.find((m) => m.unlocked && !m.done) ?? null, boss };
+}
+export type HomeCourse = NonNullable<Awaited<ReturnType<typeof homeCourse>>>;

@@ -2,6 +2,7 @@
 import { AnimatePresence, motion } from "motion/react";
 import type { LabResult } from "@/lib/player";
 import { Markdown } from "./Markdown";
+import { XpGain } from "../game/Reward";
 
 const spring = { type: "spring", stiffness: 480, damping: 28 } as const;
 
@@ -27,6 +28,7 @@ export function Verdict({ verdict, courseId, chips = true }: { verdict: LabResul
       <p className="font-display text-lg font-extrabold">
         {verdict.passed ? (verdict.stars === 3 ? "Perfect, first try with no hints" : "Lab cleared") : `${verdict.tests.filter((t) => t.pass).length} of ${verdict.tests.length} tests pass`}
       </p>
+      <XpGain xp={verdict.xp} boss={verdict.boss} />
       {verdict.passed && verdict.next != null && (
         <a href={`/course/${courseId}/m/${verdict.next + 1}`} className="flex h-12 w-fit items-center rounded-2xl bg-green px-6 font-bold text-[#06281a] shadow-[0_4px_0_#1a9a62]">Next level</a>
       )}

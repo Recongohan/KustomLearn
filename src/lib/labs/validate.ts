@@ -54,6 +54,7 @@ export async function validateLab(lab: LogsLab): Promise<{ ok: true; expected: R
   const expected = toResultSet(r.solution.fields, r.solution.rows);
   if (!expected.rows.length) return { ok: false, error: "the solution returns no rows" };
   if (expected.rows.length > MAX_ROWS) return { ok: false, error: `the solution returns over ${MAX_ROWS} rows` };
+  if (expected.columns.length > 50 || expected.rows.some((r) => r.some((v) => (v?.length ?? 0) > 2000))) return { ok: false, error: "the solution returns over 50 columns or a cell over 2,000 characters" }; // a learner's answer can't be bigger (Answer schema)
   if (r.starter && gradeResult(expected, toResultSet(r.starter.fields, r.starter.rows), lab.ordered).every((t) => t.pass)) {
     return { ok: false, error: "the starter query already gives the answer" };
   }

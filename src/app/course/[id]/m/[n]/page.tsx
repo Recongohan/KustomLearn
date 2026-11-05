@@ -8,6 +8,7 @@ import { LogLab } from "@/components/player/LogLab";
 import { Markdown } from "@/components/player/Markdown";
 import { Quiz } from "@/components/player/Quiz";
 import { TerminalLab } from "@/components/player/TerminalLab";
+import { StudyTimer } from "@/components/game/StudyTimer";
 import { playModule } from "@/lib/player";
 import { currentUserId } from "@/lib/settings";
 
@@ -21,6 +22,7 @@ async function Module({ params }: { params: Promise<{ id: string; n: string }> }
 
   return (
     <article className="flex flex-col gap-8">
+      <StudyTimer />
       <header className="flex flex-col gap-3">
         <Link href={`/course/${id}`} className="flex h-11 w-fit items-center gap-2 rounded-xl pr-3 font-medium text-muted hover:text-text">
           <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6" /></svg>

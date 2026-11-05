@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { checkAction, submitAction } from "@/app/course/[id]/m/[n]/actions";
 import type { QuizResult } from "@/lib/player";
+import { XpGain } from "../game/Reward";
 
 type Props = { courseId: string; position: number; questions: { question: string; choices: string[] }[]; best: number };
 type Checked = { correct: boolean; answer: number; explanation: string };
@@ -95,6 +96,7 @@ export function Quiz({ courseId, position, questions, best }: Props) {
             <p className="font-display text-2xl font-extrabold">
               {result.passed ? (result.stars === 3 ? "Perfect clear" : "Level cleared") : "Not cleared yet"}
             </p>
+            <XpGain xp={result.xp} />
             <p className="text-muted">
               <span className="tabular-nums">{result.correct.filter(Boolean).length} of {result.correct.length}</span> right.{" "}
               {result.passed

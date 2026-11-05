@@ -6,7 +6,10 @@ import { Suspense, useSyncExternalStore } from "react";
 
 const NAV = [
   { href: "/", label: "Home", tint: "#4f9dff", icon: "M3 10.5 12 3l9 7.5V21H3zM9 21v-7h6v7" },
-  { href: "/new", label: "New", tint: "#2fd18a", icon: "M12 5v14M5 12h14" },
+  { href: "/quests", label: "Quests", tint: "#2fd18a", icon: "M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" },
+  { href: "/ranks", label: "Ranks", tint: "#b8c4d6", icon: "M12 2l8 3v6c0 5.5-3.5 9-8 11-4.5-2-8-5.5-8-11V5z" },
+  { href: "/trophies", label: "Trophies", tint: "#ff7a2f", icon: "M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0zM17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3" },
+  { href: "/new", label: "New", tint: "#ff4f7b", icon: "M12 5v14M5 12h14" },
   { href: "/settings", label: "Settings", tint: "#ffc23d", icon: "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM12 2v3M12 19v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1 7 17M17 7l2.1-2.1" },
 ];
 
@@ -20,7 +23,7 @@ function Icon({ d }: { d: string }) {
   );
 }
 
-export function Logo() {
+export function Logo({ compact = false }: { compact?: boolean }) {
   return (
     <span className="flex items-center gap-2.5">
       <span className="grid h-8 w-8 place-items-center rounded-[10px] bg-blue">
@@ -29,7 +32,7 @@ export function Logo() {
           <path d="M19 3l-8 9 8 9" />
         </svg>
       </span>
-      <span className="font-display text-lg font-extrabold tracking-tight">KustomLearn</span>
+      <span className={`font-display text-lg font-extrabold tracking-tight ${compact ? "max-[419px]:sr-only" : ""}`}>KustomLearn</span>
     </span>
   );
 }
@@ -100,7 +103,7 @@ function SideLinks({ path }: { path: string | null }) {
 function TabLinks({ path }: { path: string | null }) {
   return (
     <ul className="flex">
-      {NAV.map((n) => {
+      {NAV.filter((n) => n.href !== "/settings").map((n) => {
         const on = isActive(path, n.href);
         return (
           <li key={n.href} className="flex-1">
@@ -138,8 +141,11 @@ export function AppShell({ children, courses }: { children: React.ReactNode; cou
       </nav>
 
       <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b border-line bg-side/90 px-4 backdrop-blur md:hidden">
-        <Link href="/"><Logo /></Link>
-        <div className="w-40"><ThemeToggle /></div>
+        <Link href="/"><Logo compact /></Link> {/* the wordmark hides on very narrow phones so the header fits 320px */}
+        <div className="flex items-center gap-2">
+          <div className="w-36"><ThemeToggle /></div>
+          <Link href="/settings" aria-label="Settings" className="grid h-11 w-11 place-items-center rounded-xl text-gold"><Icon d={NAV[NAV.length - 1].icon} /></Link>
+        </div>
       </header>
 
       <main className="min-w-0 flex-1 px-4 pb-28 pt-6 md:px-8 md:pb-16 md:pt-8">{children}</main>

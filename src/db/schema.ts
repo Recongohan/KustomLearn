@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, integer, jsonb, timestamp, date, primaryKey, index } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, jsonb, timestamp, date, primaryKey, index, uniqueIndex } from "drizzle-orm/pg-core";
 
 // Every table carries userId so cloud mode (Clerk) needs no migration. Local mode uses LOCAL_USER_ID.
 const id = () => text("id").primaryKey().default(sql`gen_random_uuid()::text`);
@@ -74,6 +74,33 @@ export const gameState = pgTable("game_state", {
   freezes: integer("freezes").notNull().default(1),
   lastStudyOn: date("last_study_on"),
 });
+
+// Gamification is derived from two append-only logs: what was earned, and how long was studied each day.
+// Streaks, ranks, freezes, quests and trophies are computed from them, so they can't drift out of sync.
+export const xpEvents = pgTable(
+  "xp_events",
+  {
+    id: id(),
+    userId: text("user_id").notNull(),
+    key: text("key").notNull(), // what earned it, unique per user, so an award can't be claimed twice
+    reason: text("reason", { enum: ["quiz", "lab", "quest", "chest"] }).notNull(),
+    amount: integer("amount").notNull(),
+    day: date("day").notNull(), // the learner's local day
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("xp_events_user_key_idx").on(t.userId, t.key), index("xp_events_user_day_idx").on(t.userId, t.day)],
+);
+
+export const studyDays = pgTable(
+  "study_days",
+  {
+    userId: text("user_id").notNull(),
+    day: date("day").notNull(),
+    minutes: integer("minutes").notNull().default(0),
+    lastBeatAt: timestamp("last_beat_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.day] })],
+);
 
 export const aiCalls = pgTable(
   "ai_calls",

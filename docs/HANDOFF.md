@@ -14,14 +14,15 @@ PRs are stacked. Each targets the branch before it:
 | #3 | `m3-generation` → `m2-intake` | Green. One Codex thread is left open on purpose (null cap for pre-0002 courses; only unreleased dev DBs). The owner decides. |
 | #4 | `m4-player` → `m3-generation` | Codex finding (empty quiz) fixed. |
 | #5 | `m5-labs` → `m4-player` | Milestone 5 (log, code and terminal labs). |
+| #6 | `m6-gamification` → `m5-labs` | Milestone 6 (gamification). |
 
 - **After #1 merges:** retarget #2 to `main`, then #3 after #2, and so on. CodeRabbit only auto-reviews PRs whose base is `main`; Codex reviews every PR.
 - **Merge flow:** fix on the lowest branch, then `git merge` upward (m0 → m2 → m3 → m4 → m5), testing each.
 - **A new session** must `subscribe_pr_activity` for PRs #1–#4 again.
 
 ## Immediate to-dos
-1. **Milestone 5 PR is open** (`m5-labs` → `m4-player`). Watch it for Codex findings.
-2. **Then milestone 6 (gamification)**, following the owner's design reference (`docs/design/dashboard-preview.dc.html`, plus the screenshot they shared): a home dashboard with streak, rank, level/XP, Pip daily goal, quests, the mini-boss lab card, an XP chart and trophies.
+1. **PR #5 (M5) and PR #6 (M6) are open.** Watch them for Codex findings. On PR #5, the two Codex threads have replies and fixes (fe45d4d), but resolving them was blocked by permissions, so they are still open.
+2. **Then milestone 7** (branching, `.kustom` export/import, consent dialog). See `docs/PLAN.md`.
 
 ## What exists (by milestone)
 - **M0/1:** shell, themes, PGlite or Neon, settings with an encrypted key, Docker, CI, Sentry gate.
@@ -37,8 +38,12 @@ PRs are stacked. Each targets the branch before it:
 - **M5 slice 2:** code labs in Python and JavaScript.
   - **JavaScript:** QuickJS (wasm) on both sides. The server uses `@jitl/quickjs-singlefile-mjs-release-sync`; the browser uses `-browser-release-sync`.
   - **Python on the server:** Pyodide in a child process with `--permission`, an empty env, sockets patched shut, a `process.binding` shim and a 30 s kill.
-  - **Python in the browser:** a Web Worker with a 10 s kill. Pyodide is served by the allowlisted route `/pyodide/[file]`.
+  - **Python in the browser:** a Web Worker, one run at a time, killed after 90 s on the first run (while Pyodide downloads) and 10 s after that. Pyodide is served by the allowlisted route `/pyodide/[file]`.
 - **M5 slice 3:** terminal labs. `src/lib/labs/shell.ts` is a simulated shell (pure TS) used by the browser and the server. The browser sends the session's commands and the server grades by `replay()`, so terminal grades can't be faked. grep uses RE2 (`re2js`, linear time), the simulated disk is capped (2,000 entries, 2M characters) and a replay stops after 3 s. Check texts never reach the browser, only their names.
+- **M6 gamification:** `src/lib/game.ts` holds the pure rules (levels, the streak/freeze/rank fold, quests, trophies, buddies, mini-bosses). `src/lib/gameplay.ts` reads two append-only logs, `xp_events` (unique per user+key, so no double pay) and `study_days` (a minute per 50 s beat, while a lesson is visible and the learner is active), and computes everything else.
+  - Days use the learner's time zone, from the `kl_tz` cookie set in the layout's inline script. The first visit reloads once to set it.
+  - XP: a quiz pays 30/40/50 for 1/2/3 stars and a lab 60/80/100, paid as the difference when stars go up. Mini-bosses (the last lab of every third level and of the final level) pay 1.5×.
+  - Screens: the home dashboard, /quests (daily quests and the weekly chest), /ranks (the ladder and buddies) and /trophies. The quiz and lab results show +XP with confetti.
 - **Key audit (2026-11-04):** full history of every branch and PR scanned for keys; clean. GitHub secret scanning and push protection are on. `.gitignore` also ignores `app-secret` and `**/pglite/`.
 - **Stars:**
   - Quiz: 3 for a perfect first try, 2 for a first-try pass, 1 for a later pass.
@@ -56,10 +61,11 @@ PRs are stacked. Each targets the branch before it:
 
 ## Backlog from the owner (later, not now)
 - Terminal tab completion (not built).
+- M6 not built: XP boosts, cosmetic rewards (themes, frames), buddies filling with study time, a capstone final boss, and a level-up celebration.
 - A motion pass across the app: animated typing (the describe box on /new and text appearing), visual feedback on every input and action, and animation wherever it fits, each with a reduced-motion fallback.
 
 ## Known shortcuts (`grep -rn "shortcut:" src`)
-- **Faked results:** for quiz instant-check and for log and code labs, the browser reports its results, so a learner could fake them. Fine for self-study; re-run on the server before any leaderboard. Terminal labs are replayed on the server.
+- **Faked results:** for log and code labs the browser reports its results, so a learner could fake them. Quizzes are graded on the server; instant check only reveals the answer. Fine for self-study; re-run on the server before any leaderboard. Terminal labs are replayed on the server.
 - **Estimate:** `estimate.ts` prices all input at the full rate and its token constants are untuned. There is no real Claude run yet (no key).
 - **Audit:** 10 npm audit findings already existed before this work, in Sentry and Inngest (one high: an old zod inside Inngest). New dependencies added none.
 
