@@ -34,10 +34,15 @@ describe("game rules", () => {
     expect(s).toMatchObject({ streak: 2, best: 7, tier: 1, bestTier: 2, freezes: 0 }); // Silver dropped to Bronze
   });
 
-  it("earns freezes from chests and from Mondays at Silver, two at most", () => {
-    const active = new Set(days("2026-10-01", 20)); // Oct 1 is a Thursday
-    const s = foldStreak(active, ["2026-10-02", "2026-10-03"], "2026-10-20");
-    expect(s.freezes).toBe(2);
+  it("earns a freeze from a chest, two at most", () => {
+    const active = new Set(days("2026-10-01", 3)); // Oct 1 is a Thursday; no Monday is reached
+    expect(foldStreak(active, ["2026-10-02"], "2026-10-03").freezes).toBe(2);
+    expect(foldStreak(active, ["2026-10-02", "2026-10-03"], "2026-10-03").freezes).toBe(2); // 3 would exceed the cap
+  });
+
+  it("earns a Monday freeze only at Silver or above", () => {
+    expect(foldStreak(new Set(days("2026-10-01", 6)), [], "2026-10-06").freezes).toBe(1); // Oct 5 is a Monday, but the rank is Bronze
+    expect(foldStreak(new Set(days("2026-10-01", 12)), [], "2026-10-12").freezes).toBe(2); // Oct 12 is a Monday, Silver since Oct 7
   });
 
   it("tracks quests and marks mini-bosses", () => {
