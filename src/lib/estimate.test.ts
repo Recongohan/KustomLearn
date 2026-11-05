@@ -44,6 +44,16 @@ describe("normalize", () => {
     expect(n.variations).toHaveLength(3);
     expect(n.variations[0]).toMatchObject({ weeks: 12, modules: 3, labs: { code: 0, terminal: 30, logs: 3 } });
   });
+  it("trims text to the limits the create action accepts", () => {
+    const raw = fakeIntake("soc");
+    raw.category = " " + "c".repeat(200);
+    raw.variations[0] = { ...raw.variations[0], name: "n".repeat(100), pitch: "p".repeat(500), outcomes: ["a", "b", "c", "o".repeat(300)] };
+    const n = normalize(raw);
+    expect(n.category).toHaveLength(80);
+    expect(n.variations[0].name).toHaveLength(60);
+    expect(n.variations[0].pitch).toHaveLength(300);
+    expect(n.variations[0].outcomes).toEqual(["a", "b", "c"]);
+  });
 });
 
 describe("billed usage", () => {

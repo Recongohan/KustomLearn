@@ -40,7 +40,12 @@ Respect any time, level or goal the learner states. Match the learner's own word
 
 export type IntakeResult = { intake: Intake; inputTokens: number; outputTokens: number; costMicros: number };
 
-export class IntakeError extends Error {}
+/** `usage` is what a call that ran but failed still cost, so it can be logged. */
+export class IntakeError extends Error {
+  constructor(message: string, readonly usage?: ReturnType<typeof billedUsage>) {
+    super(message);
+  }
+}
 
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, Math.round(n)));
 
@@ -48,14 +53,17 @@ const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, M
 export function normalize(intake: Intake): Intake {
   return {
     ...intake,
-    intent: intake.intent.slice(0, 120),
+    intent: intake.intent.trim().slice(0, 120),
+    category: intake.category.trim().slice(0, 80),
     variations: intake.variations.slice(0, 3).map((v) => ({
       ...v,
+      name: v.name.trim().slice(0, 60),
+      pitch: v.pitch.trim().slice(0, 300),
       weeks: clamp(v.weeks, 1, 12),
       hoursPerWeek: clamp(v.hoursPerWeek, 1, 20),
       modules: clamp(v.modules, 3, 16),
       labs: { code: clamp(v.labs.code, 0, 30), terminal: clamp(v.labs.terminal, 0, 30), logs: clamp(v.labs.logs, 0, 30) },
-      outcomes: v.outcomes.slice(0, 3),
+      outcomes: v.outcomes.slice(0, 3).map((o) => o.trim().slice(0, 200)),
     })),
   };
 }
@@ -76,9 +84,10 @@ export async function understand(request: string, opts: { apiKey: string; model:
     system: SYSTEM,
     messages: [{ role: "user", content: request }],
   });
-  if (res.stop_reason === "refusal") throw new IntakeError("The model declined this request. Try describing it differently.");
-  if (!res.parsed_output) throw new IntakeError("Couldn't understand that. Try again in a moment.");
+  const usage = billedUsage(res.usage, opts.model); // charged even when the answer can't be used
+  if (res.stop_reason === "refusal") throw new IntakeError("The model declined this request. Try describing it differently.", usage);
+  if (!res.parsed_output) throw new IntakeError("Couldn't understand that. Try again in a moment.", usage);
   const intake = normalize(res.parsed_output);
-  if (intake.inScope && intake.variations.length !== 3) throw new IntakeError("Couldn't build three options. Try again.");
-  return { intake, ...billedUsage(res.usage, opts.model) };
+  if (intake.inScope && intake.variations.length !== 3) throw new IntakeError("Couldn't build three options. Try again.", usage);
+  return { intake, ...usage };
 }
