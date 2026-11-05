@@ -48,3 +48,7 @@ next-env.d.ts
 app-secret
 **/pglite/
 .taste-skill/
+
+# playwright
+/test-results/
+/playwright-report/
