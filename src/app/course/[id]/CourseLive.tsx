@@ -1,4 +1,5 @@
 "use client";
+import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { Pip } from "@/components/Pip";
@@ -14,6 +15,7 @@ export function CourseLive({ id, intent, category, variation, initial }: Props) 
   const [p, setP] = useState(initial);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  const router = useRouter();
 
   // Poll while building; stop as soon as it settles.
   useEffect(() => {
@@ -98,14 +100,7 @@ export function CourseLive({ id, intent, category, variation, initial }: Props) 
               <p className="text-muted">{p.modules.length} modules · built with {formatTokens(p.spentTokens)} tokens · no more AI calls from here</p>
             </div>
           </div>
-          <ol className="flex flex-col gap-2">
-            {p.modules.map((m) => (
-              <li key={m.position} className="flex items-center gap-3 rounded-2xl bg-panel-2 px-4 py-3">
-                <span className="grid h-9 w-9 place-items-center rounded-xl bg-blue font-display font-extrabold text-[#06162b]">{m.position + 1}</span>
-                <span className="font-semibold">{m.title}</span>
-              </li>
-            ))}
-          </ol>
+          <BigButton onClick={() => router.refresh()}>Open the world map</BigButton>
         </motion.section>
       )}
 

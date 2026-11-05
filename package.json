@@ -18,10 +18,13 @@
     "@sentry/nextjs": "^11.10.0",
     "drizzle-orm": "^0.45.4",
     "inngest": "^4.26.2",
+    "mermaid": "^12.2.0",
     "motion": "^14.9.1",
     "next": "16.4.5",
     "react": "19.3.0",
     "react-dom": "19.3.0",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
     "server-only": "^0.0.1",
     "zod": "^4.6.7"
   },

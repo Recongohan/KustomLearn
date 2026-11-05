@@ -5,6 +5,7 @@ import { GenerationError, STEP_MAX_OUTPUT, generateModule, generateOutline, type
 import { IN_PER_CALL } from "./estimate";
 import type { Variation } from "./ai/intake";
 import { writerFor, type PricedModel } from "./ai/pricing";
+import { scheduleDates } from "./schedule";
 import { getAiCredentials } from "./settings";
 
 // Each step is idempotent: Inngest retries a failed step, so a step that already finished just returns.
@@ -129,7 +130,14 @@ export async function finalize(courseId: string) {
     .from(schema.modules)
     .where(and(eq(schema.modules.courseId, courseId), isNull(schema.modules.content)));
   if (missing.length) throw new Error(`${missing.length} modules have no content`);
-  await db.update(schema.courses).set({ status: "ready", statusNote: null }).where(eq(schema.courses.id, courseId));
+  const { course } = await loadCourse(courseId);
+  const mods = await db.select({ id: schema.modules.id }).from(schema.modules).where(eq(schema.modules.courseId, courseId)).orderBy(asc(schema.modules.position));
+  const dates = scheduleDates(new Date().toISOString().slice(0, 10), (course.variation as Variation).weeks, mods.length);
+  await db.transaction(async (tx) => {
+    // The schedule starts the day the course is ready, spread over the weeks the learner chose.
+    for (const [i, m] of mods.entries()) await tx.update(schema.modules).set({ scheduledOn: dates[i] }).where(eq(schema.modules.id, m.id));
+    await tx.update(schema.courses).set({ status: "ready", statusNote: null }).where(eq(schema.courses.id, courseId));
+  });
 }
 
 export async function markFailed(courseId: string, note: string) {

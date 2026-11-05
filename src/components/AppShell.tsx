@@ -126,13 +126,14 @@ const withPath = (render: (path: string | null) => React.ReactNode) => (
   </Suspense>
 );
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({ children, courses }: { children: React.ReactNode; courses?: React.ReactNode }) {
   return (
     <MotionConfig reducedMotion="user">
     <div className="min-h-dvh md:flex">
       <nav aria-label="Main" className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col border-r border-line bg-side px-3 py-6 md:flex">
         <Link href="/" className="px-2.5"><Logo /></Link>
         {withPath((path) => <SideLinks path={path} />)}
+        <div className="min-h-0 overflow-y-auto">{courses}</div>
         <div className="mt-auto"><ThemeToggle /></div>
       </nav>
 

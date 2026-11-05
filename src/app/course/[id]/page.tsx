@@ -7,6 +7,8 @@ import { getDb, schema } from "@/db";
 import { and, eq } from "drizzle-orm";
 import type { Variation } from "@/lib/ai/intake";
 import { CourseLive } from "./CourseLive";
+import { WorldMap } from "@/components/player/WorldMap";
+import { courseMap } from "@/lib/player";
 
 async function Course({ id }: { id: Promise<string> }) {
   await connection();
@@ -14,6 +16,11 @@ async function Course({ id }: { id: Promise<string> }) {
   const userId = currentUserId();
   const progress = /^[0-9a-f-]{36}$/.test(courseId) ? await progressOf(courseId, userId) : null;
   if (!progress) notFound();
+  if (progress.status === "ready") {
+    const map = (await courseMap(courseId, currentUserId()))!;
+    const today = new Date().toISOString().slice(0, 10);
+    return <WorldMap id={courseId} title={map.title} intent={map.intent} category={map.category} capstone={map.variation.capstone} hoursPerWeek={map.variation.hoursPerWeek} modules={map.modules} today={today} />;
+  }
   const db = await getDb();
   const [course] = await db.select().from(schema.courses).where(and(eq(schema.courses.id, courseId), eq(schema.courses.userId, userId)));
   if (!course) notFound();
@@ -22,7 +29,7 @@ async function Course({ id }: { id: Promise<string> }) {
 
 export default function CoursePage({ params }: PageProps<"/course/[id]">) {
   return (
-    <div className="mx-auto max-w-4xl">
+    <div className="mx-auto max-w-6xl">
       <Suspense fallback={<div className="h-64 animate-pulse rounded-3xl bg-panel" />}>
         <Course id={params.then((p) => p.id)} />
       </Suspense>

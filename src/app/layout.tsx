@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Bricolage_Grotesque, Instrument_Sans } from "next/font/google";
+import { Suspense } from "react";
 import { AppShell } from "@/components/AppShell";
+import { SidebarCourses } from "@/components/SidebarCourses";
 import "./globals.css";
 
 const display = Bricolage_Grotesque({ subsets: ["latin"], variable: "--font-display", weight: ["600", "800"] });
@@ -23,7 +25,15 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body className="antialiased">
-        <AppShell>{children}</AppShell>
+        <AppShell
+          courses={
+            <Suspense fallback={null}>
+              <SidebarCourses />
+            </Suspense>
+          }
+        >
+          {children}
+        </AppShell>
       </body>
     </html>
   );
