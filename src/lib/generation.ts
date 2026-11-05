@@ -20,12 +20,11 @@ async function loadCourse(courseId: string) {
   return { db, course };
 }
 
-const briefOf = (c: typeof schema.courses.$inferSelect): CourseBrief => ({
-  intent: c.intent,
-  category: c.category,
-  request: c.request,
-  variation: c.variation as Variation,
-});
+export type Branched = Variation & { branch?: { from: number; instruction: string; keep: Outline["modules"] } };
+const briefOf = (c: typeof schema.courses.$inferSelect): CourseBrief => {
+  const v = c.variation as Branched;
+  return { intent: c.intent, category: c.category, request: c.request, variation: v, branch: v.branch && { keep: v.branch.keep, instruction: v.branch.instruction } };
+};
 
 async function credentials(userId: string) {
   const creds = await getAiCredentials(userId);
@@ -90,7 +89,9 @@ export async function runOutline(courseId: string): Promise<StepResult> {
   }
   const { data, usage } = result;
   await db.transaction(async (tx) => {
-    await tx.insert(schema.modules).values(data.modules.map((m, i) => ({ courseId, position: i, title: m.title })));
+    const kept = (course.variation as Branched).branch?.from ?? 0; // a branch copied its first modules already
+    const fresh = data.modules.map((m, i) => ({ courseId, position: i, title: m.title })).slice(kept);
+    if (fresh.length) await tx.insert(schema.modules).values(fresh);
     await tx.update(schema.courses).set({ plan: data, title: data.title }).where(eq(schema.courses.id, courseId));
     await charge(tx, courseId, course.userId, model, usage, reason);
   });
