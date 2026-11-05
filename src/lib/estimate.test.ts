@@ -53,6 +53,11 @@ describe("normalize", () => {
     expect(n.variations[0].name).toHaveLength(60);
     expect(n.variations[0].pitch).toHaveLength(300);
     expect(n.variations[0].outcomes).toEqual(["a", "b", "c"]);
+    raw.category = "  ";
+    raw.variations[1] = { ...raw.variations[1], name: " ", outcomes: ["", " x "] };
+    const m = normalize(raw);
+    expect(m.category).toBe("Tech");
+    expect(m.variations[1]).toMatchObject({ name: "Option 2", outcomes: ["x"] });
   });
 });
 
