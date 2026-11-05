@@ -1,5 +1,6 @@
 import "server-only";
 import { and, asc, eq, sql } from "drizzle-orm";
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { getDb, schema } from "@/db";
 import type { ModuleContent, Outline } from "./ai/generate";
 import type { Variation } from "./ai/intake";
@@ -42,11 +43,19 @@ export function labStars(passed: boolean, attempt: number, hintsUsed: number, so
 type ProgressValues = Partial<Omit<typeof schema.progress.$inferInsert, "userId" | "courseId" | "itemId">>;
 async function saveProgress(userId: string, courseId: string, item: string, values: ProgressValues) {
   const db = await getDb();
-  const set = { status: "started" as const, ...values, updatedAt: new Date() };
+  const p = schema.progress;
+  // Concurrent requests (two tabs, a double click) must never undo progress: done stays done, counters only grow.
+  const grow = (col: AnyPgColumn) => sql`greatest(${col}, excluded.${sql.identifier(col.name)})`;
+  const set: Record<string, unknown> = { updatedAt: new Date(), status: sql`case when ${p.status} = 'done' then 'done' else excluded.status end` };
+  if (values.attempts !== undefined) set.attempts = grow(p.attempts);
+  if (values.stars !== undefined) set.stars = grow(p.stars);
+  if (values.score !== undefined) set.score = sql`greatest(coalesce(${p.score}, 0), excluded.score)`;
+  if (values.hintsUsed !== undefined) set.hintsUsed = grow(p.hintsUsed);
+  if (values.solutionSeen !== undefined) set.solutionSeen = grow(p.solutionSeen);
   await db
-    .insert(schema.progress)
-    .values({ userId, courseId, itemId: item, ...set })
-    .onConflictDoUpdate({ target: [schema.progress.userId, schema.progress.courseId, schema.progress.itemId], set });
+    .insert(p)
+    .values({ userId, courseId, itemId: item, status: "started", ...values })
+    .onConflictDoUpdate({ target: [p.userId, p.courseId, p.itemId], set });
 }
 
 async function readyCourse(courseId: string, userId: string) {
