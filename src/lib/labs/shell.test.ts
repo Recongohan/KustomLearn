@@ -101,6 +101,8 @@ describe("shell simulator", () => {
     expect(Date.now() - t).toBeLessThan(1_000);
     expect(exec(sh, "echo 'x,y,z' | cut -d, -f 2-999999999").out).toBe("y,z\n"); // ranges are capped, not allocated
     expect(exec(sh, "echo 'x,y,z' | cut -d, -f 3-1").out).toBe("\n");
+    expect(exec(sh, "echo 'x,y,z' | cut -d, -f 3,1-2,1-100,2").out).toBe("x,y,z\n"); // each field once, in order, like cut
+    expect(exec(sh, `cat ${Array(500).fill("/a.txt").join(" ")}`).err).toContain("too large");
     exec(sh, "mkdir d && cat /a.txt /a.txt /a.txt /a.txt > d/f");
     const r = replay([{ path: "/home/learner/d/f", content: "x".repeat(400_000) }], Array(20).fill("cp -r d d2 && mv d2 d/sub"));
     let total = 0;

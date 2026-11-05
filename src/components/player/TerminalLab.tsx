@@ -88,7 +88,7 @@ export function TerminalLab({ courseId, position, index, lab }: Props) {
   const check = () =>
     start(async () => {
       setError(null);
-      const res = await labSubmitAction(courseId, position, index, { commands: session });
+      const res = await labSubmitAction(courseId, position, index, { commands: session }).catch(() => null);
       if (!res) return setError("Couldn't check that. Try again.");
       setVerdict(res);
       setCanSolve(res.canSolve);
@@ -98,16 +98,17 @@ export function TerminalLab({ courseId, position, index, lab }: Props) {
 
   const hint = () =>
     start(async () => {
-      const r = await labHintAction(courseId, position, index);
-      if (!r) return;
+      const r = await labHintAction(courseId, position, index).catch(() => null);
+      if (!r) return setError("Couldn't load a hint. Try again.");
       setHints(r.hintsShown);
       setCanSolve(r.canSolve);
     });
 
   const reveal = () =>
     start(async () => {
-      const r = await labSolutionAction(courseId, position, index);
+      const r = await labSolutionAction(courseId, position, index).catch(() => null);
       if (r) setSolution(r);
+      else setError("Couldn't open the solution. Try again.");
     });
 
   // Runs the reference commands in a fresh session, so the learner can watch what each one does.

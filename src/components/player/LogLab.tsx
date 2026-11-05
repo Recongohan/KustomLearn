@@ -82,7 +82,7 @@ export function LogLab({ courseId, position, index, lab }: Props) {
     start(async () => {
       const set = await run();
       if (!set) return;
-      const r = await labSubmitAction(courseId, position, index, { rows: { columns: set.columns, rows: set.rows.slice(0, 1000).map((row) => row.slice(0, 50)) } });
+      const r = await labSubmitAction(courseId, position, index, { rows: { columns: set.columns, rows: set.rows.slice(0, 1000).map((row) => row.slice(0, 50)) } }).catch(() => null);
       if (!r) return setRunError("Couldn't check that. Try again.");
       setVerdict(r);
       setCanSolve(r.canSolve);
@@ -92,16 +92,17 @@ export function LogLab({ courseId, position, index, lab }: Props) {
 
   const hint = () =>
     start(async () => {
-      const r = await labHintAction(courseId, position, index);
-      if (!r) return;
+      const r = await labHintAction(courseId, position, index).catch(() => null);
+      if (!r) return setRunError("Couldn't load a hint. Try again.");
       setHints(r.hintsShown);
       setCanSolve(r.canSolve);
     });
 
   const reveal = () =>
     start(async () => {
-      const r = await labSolutionAction(courseId, position, index);
+      const r = await labSolutionAction(courseId, position, index).catch(() => null);
       if (r) setSolution(r);
+      else setRunError("Couldn't open the solution. Try again.");
     });
 
   const id = `lab-${index}`;

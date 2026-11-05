@@ -151,6 +151,9 @@ describe("labs", () => {
     expect((await labHint(id, "local", 0, 0))!.canSolve).toBe(true);
     expect(await labSolution(id, "local", 0, 0)).toMatchObject({ solution: expect.stringContaining("having count(*) > 5") });
     expect((await courseMap(id, "local"))!.modules[0].stars).toBe(2); // opening it later never lowers stars already earned
+    // A stale failing check racing a pass (two tabs) must not undo the clear or lower the stars.
+    await Promise.all([labSubmit(id, "local", 0, 0, { rows: { columns: ["ip"], rows: [["x"]] } }), labHint(id, "local", 0, 0)]);
+    expect((await courseMap(id, "local"))!.modules[0]).toMatchObject({ done: true, stars: 2 });
     expect(await labSubmit(id, "local", 1, 5, { rows: { columns: [], rows: [] } })).toBeNull(); // no such lab
   });
 

@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { motion } from "motion/react";
 import { labHintAction, labSolutionAction, labSubmitAction } from "@/app/course/[id]/m/[n]/actions";
 import { preloadPython, runCodeLab, type CodeRun } from "@/lib/labs/browser";
@@ -26,6 +26,7 @@ export function CodeLab({ courseId, position, index, lab }: Props) {
   const [best, setBest] = useState(lab.state.stars);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  const tabIndents = useRef(true); // Esc turns it off until the editor loses focus, so Tab can leave (no keyboard trap)
 
   useEffect(() => {
     if (lab.language === "python") preloadPython();
@@ -35,7 +36,7 @@ export function CodeLab({ courseId, position, index, lab }: Props) {
     setRunning(true);
     setError(null);
     setVerdict(null); // the last verdict was for the code as it was then
-    const r = await runCodeLab(lab.language, code, lab.entry, lab.tests.map((t) => t.args));
+    const r = await runCodeLab(lab.language, code, lab.entry, lab.tests.map((t) => t.args)).catch((e): CodeRun => ({ error: e instanceof Error ? e.message : String(e) }));
     setRunning(false);
     setRun(r);
     return r;
@@ -45,7 +46,7 @@ export function CodeLab({ courseId, position, index, lab }: Props) {
     start(async () => {
       const r = await execute();
       if ("error" in r) return;
-      const res = await labSubmitAction(courseId, position, index, { values: r.results.map((x) => x.value) });
+      const res = await labSubmitAction(courseId, position, index, { values: r.results.map((x) => x.value) }).catch(() => null);
       if (!res) return setError("Couldn't check that. Try again.");
       setVerdict(res);
       setCanSolve(res.canSolve);
@@ -55,16 +56,17 @@ export function CodeLab({ courseId, position, index, lab }: Props) {
 
   const hint = () =>
     start(async () => {
-      const r = await labHintAction(courseId, position, index);
-      if (!r) return;
+      const r = await labHintAction(courseId, position, index).catch(() => null);
+      if (!r) return setError("Couldn't load a hint. Try again.");
       setHints(r.hintsShown);
       setCanSolve(r.canSolve);
     });
 
   const reveal = () =>
     start(async () => {
-      const r = await labSolutionAction(courseId, position, index);
+      const r = await labSolutionAction(courseId, position, index).catch(() => null);
       if (r) setSolution(r);
+      else setError("Couldn't open the solution. Try again.");
     });
 
   const id = `lab-${index}`;
@@ -96,13 +98,16 @@ export function CodeLab({ courseId, position, index, lab }: Props) {
             void execute();
             return;
           }
-          if (e.key !== "Tab" || e.shiftKey) return; // Shift+Tab still leaves the editor for keyboard users
+          if (e.key === "Escape") tabIndents.current = false;
+          if (e.key !== "Tab" || e.shiftKey || !tabIndents.current) return; // Shift+Tab, or Esc then Tab, leaves the editor
           e.preventDefault();
           const el = e.currentTarget;
           const { selectionStart: a, selectionEnd: b } = el;
           setCode(code.slice(0, a) + indent + code.slice(b));
           requestAnimationFrame(() => el.setSelectionRange(a + indent.length, a + indent.length));
         }}
+        onBlur={() => (tabIndents.current = true)}
+        aria-describedby={`${id}-keys`}
         spellCheck={false}
         autoCapitalize="off"
         autoCorrect="off"
@@ -116,7 +121,7 @@ export function CodeLab({ courseId, position, index, lab }: Props) {
         <motion.button type="button" whileTap={{ scale: 0.97, y: 2 }} onClick={check} disabled={running || pending} className="h-12 rounded-2xl bg-green px-6 font-bold text-[#06281a] shadow-[0_4px_0_#1a9a62] disabled:opacity-50">
           {pending ? "Checking…" : "Check answer"}
         </motion.button>
-        <span className="hidden text-sm text-muted sm:ml-auto sm:inline">Tab indents · Ctrl or ⌘ + Enter runs</span>
+        <span id={`${id}-keys`} className="hidden text-sm text-muted sm:ml-auto sm:inline">Tab indents · Esc then Tab leaves · Ctrl or ⌘ + Enter runs</span>
       </div>
 
       {(error || (run && "error" in run)) && (
