@@ -35,11 +35,16 @@ export function Quests({ quests, chest, showChest = false }: { quests: GameSumma
   const [chestOpen, setChestOpen] = useState(chest.claimed);
   const [burst, setBurst] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  const [notice, setNotice] = useState<string | null>(null);
 
   const claim = (id: string) =>
     start(async () => {
       const r = await claimQuestAction(id);
-      if (!r) return;
+      if (!r) {
+        setNotice("That quest can't be claimed right now. Refreshing…");
+        return router.refresh(); // the day probably rolled over
+      }
+      setNotice(null);
       setClaimed((s) => new Set(s).add(id));
       setBurst(id);
       router.refresh(); // XP, level and the chart update
@@ -48,7 +53,11 @@ export function Quests({ quests, chest, showChest = false }: { quests: GameSumma
   const openChest = () =>
     start(async () => {
       const r = await claimChestAction();
-      if (!r) return;
+      if (!r) {
+        setNotice("The chest can't be opened right now. Refreshing…");
+        return router.refresh(); // the week probably rolled over
+      }
+      setNotice(null);
       setChestOpen(true);
       setBurst("chest");
       router.refresh();
@@ -88,6 +97,7 @@ export function Quests({ quests, chest, showChest = false }: { quests: GameSumma
           );
         })}
       </ul>
+      {notice && <p role="status" className="text-sm text-muted">{notice}</p>}
       {showChest && (
         <div className="relative mt-2 flex flex-col items-center gap-3 rounded-3xl bg-panel-2 p-5 text-center">
           <AnimatePresence mode="wait">

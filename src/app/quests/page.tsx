@@ -14,7 +14,7 @@ async function QuestBoard() {
   return (
     <div className="grid gap-5 lg:grid-cols-[3fr_2fr]">
       <Panel title="Daily" aside="Resets at midnight">
-        <Quests quests={g.quests} chest={g.chest} />
+        <Quests key={`${g.day}/${g.chest.week}`} quests={g.quests} chest={g.chest} />
         {c?.next && (
           <Link href={`/course/${c.id}/m/${c.next.position + 1}`} className="mt-2 flex h-12 w-fit items-center rounded-2xl bg-green px-6 font-bold text-[#06281a] shadow-[0_4px_0_#1a9a62] transition-transform hover:-translate-y-px active:translate-y-0.5">
             Play level {c.next.position + 1}
@@ -22,7 +22,7 @@ async function QuestBoard() {
         )}
       </Panel>
       <Panel title="This week" aside="Opens on any day once full" delay={80}>
-        <Quests quests={[]} chest={g.chest} showChest />
+        <Quests key={g.chest.week} quests={[]} chest={g.chest} showChest />
       </Panel>
     </div>
   );

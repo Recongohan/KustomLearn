@@ -23,7 +23,7 @@ function Icon({ d }: { d: string }) {
   );
 }
 
-export function Logo() {
+export function Logo({ compact = false }: { compact?: boolean }) {
   return (
     <span className="flex items-center gap-2.5">
       <span className="grid h-8 w-8 place-items-center rounded-[10px] bg-blue">
@@ -32,7 +32,7 @@ export function Logo() {
           <path d="M19 3l-8 9 8 9" />
         </svg>
       </span>
-      <span className="font-display text-lg font-extrabold tracking-tight">KustomLearn</span>
+      <span className={`font-display text-lg font-extrabold tracking-tight ${compact ? "max-[419px]:sr-only" : ""}`}>KustomLearn</span>
     </span>
   );
 }
@@ -141,7 +141,7 @@ export function AppShell({ children, courses }: { children: React.ReactNode; cou
       </nav>
 
       <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b border-line bg-side/90 px-4 backdrop-blur md:hidden">
-        <Link href="/"><Logo /></Link>
+        <Link href="/"><Logo compact /></Link> {/* the wordmark hides on very narrow phones so the header fits 320px */}
         <div className="flex items-center gap-2">
           <div className="w-36"><ThemeToggle /></div>
           <Link href="/settings" aria-label="Settings" className="grid h-11 w-11 place-items-center rounded-xl text-gold"><Icon d={NAV[NAV.length - 1].icon} /></Link>
