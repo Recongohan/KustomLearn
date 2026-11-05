@@ -95,7 +95,12 @@ describe("shell simulator", () => {
     const t = Date.now();
     expect(exec(sh, "grep -c '(a+)+$' /a.txt").out).toBe("0\n"); // hangs a backtracking engine
     expect(exec(sh, "grep -o 'a\\+!' /a.txt").code).toBe(1); // RE2 syntax, not BRE: \\+ is a literal plus
+    exec(sh, `touch ${"a".repeat(1_500)}`);
+    expect(exec(sh, "ls a*a*a*a*a*a*a*b").code).not.toBe(0); // a glob with no match stays as typed, without backtracking
+    expect(exec(sh, "find . -name 'a*a*a*a*a*a*a*b'").out).toBe("");
     expect(Date.now() - t).toBeLessThan(1_000);
+    expect(exec(sh, "echo 'x,y,z' | cut -d, -f 2-999999999").out).toBe("y,z\n"); // ranges are capped, not allocated
+    expect(exec(sh, "echo 'x,y,z' | cut -d, -f 3-1").out).toBe("\n");
     exec(sh, "mkdir d && cat /a.txt /a.txt /a.txt /a.txt > d/f");
     const r = replay([{ path: "/home/learner/d/f", content: "x".repeat(400_000) }], Array(20).fill("cp -r d d2 && mv d2 d/sub"));
     let total = 0;

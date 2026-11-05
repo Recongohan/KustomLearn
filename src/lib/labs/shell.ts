@@ -126,8 +126,9 @@ function parse(line: string): Pipeline[] {
   return lines;
 }
 
-function globToRegex(g: string) {
-  return new RegExp("^" + g.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".") + "$");
+function globToRegex(g: string, flags = 0) {
+  // RE2 like grep: the server replays learner sessions, so a glob must not be able to backtrack for ever
+  return RE2JS.compile("^" + g.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".") + "$", flags | RE2JS.DOTALL);
 }
 
 function expand(sh: Shell, w: Word): string[] {
@@ -370,7 +371,9 @@ const run: Record<(typeof COMMANDS)[number], (c: Ctx) => Result> = {
     if (!values.f) return fail("cut: you must specify a list of fields (-f)");
     const fields = values.f.split(",").flatMap((p) => {
       const [a, b] = p.split("-").map((x) => (x === "" ? NaN : parseInt(x, 10)));
-      return p.includes("-") ? Array.from({ length: (isNaN(b) ? 100 : b) - (isNaN(a) ? 1 : a) + 1 }, (_, i) => (isNaN(a) ? 1 : a) + i) : [a];
+      if (!p.includes("-")) return [a];
+      const lo = isNaN(a) ? 1 : Math.max(1, a), hi = isNaN(b) ? 100 : Math.min(100, b); // at most 100 fields, so `-f 1-1e9` can't allocate
+      return Array.from({ length: Math.max(0, hi - lo + 1) }, (_, i) => lo + i);
     });
     const r = readInputs(c, rest, "cut");
     if (!("text" in r)) return r;
@@ -380,9 +383,9 @@ const run: Record<(typeof COMMANDS)[number], (c: Ctx) => Result> = {
     let start = ".";
     const args = [...c.args];
     if (args[0] && !args[0].startsWith("-")) start = args.shift()!;
-    let name: RegExp | null = null, type: string | null = null;
+    let name: RE2JS | null = null, type: string | null = null;
     for (let i = 0; i < args.length; i++) {
-      if (args[i] === "-name" || args[i] === "-iname") name = new RegExp(globToRegex(args[++i] ?? "*").source, args[i - 1] === "-iname" ? "i" : "");
+      if (args[i] === "-name" || args[i] === "-iname") name = globToRegex(args[++i] ?? "*", args[i - 1] === "-iname" ? RE2JS.CASE_INSENSITIVE : 0);
       else if (args[i] === "-type") type = args[++i] ?? null;
       else return fail(`find: unknown predicate '${args[i]}'`);
     }

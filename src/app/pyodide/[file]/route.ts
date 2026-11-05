@@ -13,7 +13,7 @@ const FILES: Record<string, string> = {
 
 export async function GET(_req: Request, { params }: RouteContext<"/pyodide/[file]">) {
   const { file } = await params;
-  const type = FILES[file];
+  const type = Object.hasOwn(FILES, file) ? FILES[file] : undefined;
   if (!type) return new Response("Not found", { status: 404 }); // an allowlist: no path ever reaches the file system
   const body = await readFile(path.join(pyodideDir(), file));
   return new Response(body, { headers: { "content-type": type, "cache-control": "public, max-age=31536000, immutable" } });

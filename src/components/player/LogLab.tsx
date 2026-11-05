@@ -152,7 +152,7 @@ export function LogLab({ courseId, position, index, lab }: Props) {
         autoCapitalize="off"
         autoCorrect="off"
         rows={Math.min(12, Math.max(4, query.split("\n").length + 1))}
-        className="w-full resize-y rounded-2xl border-2 border-line bg-panel-2 p-4 font-mono text-sm leading-6 outline-none transition-colors focus:border-blue"
+        className="w-full resize-y rounded-2xl border-2 border-line bg-panel-2 p-4 font-mono text-base leading-6 outline-none transition-colors focus:border-blue md:text-sm"
       />
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <motion.button type="button" whileTap={{ scale: 0.97, y: 2 }} onClick={() => void run()} disabled={!tables || pending} className="h-12 rounded-2xl bg-blue px-6 font-bold text-white shadow-[0_4px_0_#2f6fc2] disabled:opacity-50">
