@@ -1,82 +1,99 @@
-# KustomLearn — handoff (2026-11-04)
+# KustomLearn — handoff (2026-11-04, evening)
 
-Read first: `CLAUDE.md`, `docs/SPEC.md` (source of truth), `docs/PLAN.md` (milestones 0–8), `AGENTS.md` (Next 16 rules: read `node_modules/next/dist/docs`).
+Read first: `CLAUDE.md`, `docs/SPEC.md` (source of truth), `docs/PLAN.md` (milestones 0–8), `AGENTS.md` (Next 16: read `node_modules/next/dist/docs`). Use the skills ponytail, karpathy-guidelines, taste-skill (app screens) and ui-ux-pro-max. Load claude-api before touching AI code.
 
-## Repo and branches
-GitHub `Recongohan/KustomLearn`. Commits are authored by **Sadiq Mohammed <71874497+Recongohan@users.noreply.github.com>**. Claude appears only as a `Co-Authored-By` line. Never put model IDs in commits, PRs or code.
+## Repo, branches, PRs
+GitHub `Recongohan/KustomLearn`. Commits are authored by **Sadiq Mohammed <71874497+Recongohan@users.noreply.github.com>** (set `git config user.name/user.email` in a new container). Claude appears only as a `Co-Authored-By` line. Never put model IDs in commits, PRs or code.
 
-| Branch | State |
-|---|---|
-| `main` | spec, skills, docs |
-| `m0-foundation` | **PR #1, open.** Head is `5987dc8`. Holds the app shell, DB, settings, Docker, CI and password gate |
-| `m2-intake` | built on m0. Describe → understand → 3 variations → tune → token estimate → lock in. No PR yet |
-| `m3-generation` | built on m2. Inngest job: outline → module-N → finalize, with a token cap, pause and resume. No PR yet |
+PRs are stacked. Each targets the branch before it:
 
-Flow: fix on m0, then `git merge` m0 → m2 → m3, test each and push. **`5987dc8` has not been merged forward yet.**
+| PR | Branch | State |
+|---|---|---|
+| #1 | `m0-foundation` → `main` | Green, all threads resolved. **Waiting for the owner to merge.** |
+| #2 | `m2-intake` → `m0-foundation` | Green. Codex finding (fallback usage) fixed. |
+| #3 | `m3-generation` → `m2-intake` | Green. One Codex thread is left open on purpose (null cap for pre-0002 courses; only unreleased dev DBs). The owner decides. |
+| #4 | `m4-player` → `m3-generation` | Codex finding (empty quiz) fixed. |
+| #5 | `m5-labs` → `m4-player` | Milestone 5 (log, code and terminal labs). |
+
+- **After #1 merges:** retarget #2 to `main`, then #3 after #2, and so on. CodeRabbit only auto-reviews PRs whose base is `main`; Codex reviews every PR.
+- **Merge flow:** fix on the lowest branch, then `git merge` upward (m0 → m2 → m3 → m4 → m5), testing each.
+- **A new session** must `subscribe_pr_activity` for PRs #1–#4 again.
 
 ## Immediate to-dos
-1. Merge `m0-foundation` into `m2-intake`, then `m2-intake` into `m3-generation`. Run the checks and push.
-2. Reply to and resolve these CodeRabbit threads on PR #1, fixed in `5987dc8`:
-   - 4468602840: key hint removed
-   - 4468602820: actions pinned to SHAs
-   - 4468602860: model select disabled while saving
-3. Fix the open gate findings on `646227e` (`src/lib/gate.ts`, `src/proxy.ts`, `src/app/login/actions.ts`):
-   - **4468777355**: the session cookie is an HMAC of a fixed label. Make it an independent signed token with an expiry, keyed from APP_SECRET or a derived secret, and keep password checking separate.
-   - **4468777312**: add a per-client login rate limit or lockout. In-memory is fine for one instance; note the multi-instance case.
-   - **4468777327**: validate `next` by parsing it as a URL. Reject `\`, tabs and `//` variants, and redirect to pathname + search only.
-   - **4468777371** (trivial): proxy exclusions should match exactly or on a path segment.
-4. Read the queued notifications (`ReadNotifications`). PR #1 is subscribed; a new session must call `subscribe_pr_activity` again.
-5. Ask the user: open PRs for m2 and m3 now, or go on to milestone 4?
+1. **Milestone 5 PR is open** (`m5-labs` → `m4-player`). Watch it for Codex findings.
+2. **Then milestone 6 (gamification)**, following the owner's design reference (`docs/design/dashboard-preview.dc.html`, plus the screenshot they shared): a home dashboard with streak, rank, level/XP, Pip daily goal, quests, the mini-boss lab card, an XP chart and trophies.
 
-## Replying to CodeRabbit
-gh GraphQL doesn't work here. Use REST and the ccr routes:
-- `gh api repos/Recongohan/KustomLearn/pulls/1/ccr/review_threads`
-- `.../pulls/1/comments/{id}/replies`
-- `.../pulls/1/ccr/comments/{id}/resolve`
+## What exists (by milestone)
+- **M0/1:** shell, themes, PGlite or Neon, settings with an encrypted key, Docker, CI, Sentry gate.
+  - Password gate: signed expiring session, 5-try lockout, safe `next`, segment-matched open paths.
+- **M2:** intake, giving 3 variations, tuning and a token estimate. **M3:** an Inngest generation job:
+  - Token cap with shrink-to-fit, so a call's `max_tokens` is limited to the budget left. Failed and cut-off calls are charged too.
+  - Usage counts every fallback attempt and cache read/write.
+  - Prompt caching on the shared module prefix.
+  - **Model mix:** the chosen model plans (intake, outline); `writerFor()` writes the lessons (Sonnet 5.5 when Opus 5.5 is chosen).
+  - No `fallbacks` parameter is sent for Haiku.
+- **M4:** world map (horizontal strip on desktop, vertical path on phones), schedule by week, lessons (markdown with no raw HTML, Mermaid strict), quiz graded on the server, stars, the sidebar "Your courses".
+- **M5 slice 1:** log labs. The browser runs PGlite; the server compares the rows against reference rows kept server-side. Validation runs in a worker thread with a 10 s kill. Labs are repaired up to twice, otherwise dropped.
+- **M5 slice 2:** code labs in Python and JavaScript.
+  - **JavaScript:** QuickJS (wasm) on both sides. The server uses `@jitl/quickjs-singlefile-mjs-release-sync`; the browser uses `-browser-release-sync`.
+  - **Python on the server:** Pyodide in a child process with `--permission`, an empty env, sockets patched shut, a `process.binding` shim and a 30 s kill.
+  - **Python in the browser:** a Web Worker with a 10 s kill. Pyodide is served by the allowlisted route `/pyodide/[file]`.
+- **M5 slice 3:** terminal labs. `src/lib/labs/shell.ts` is a simulated shell (pure TS) used by the browser and the server. The browser sends the session's commands and the server grades by `replay()`, so terminal grades can't be faked. grep uses RE2 (`re2js`, linear time), the simulated disk is capped (2,000 entries, 2M characters) and a replay stops after 3 s. Check texts never reach the browser, only their names.
+- **Key audit (2026-11-04):** full history of every branch and PR scanned for keys; clean. GitHub secret scanning and push protection are on. `.gitignore` also ignores `app-secret` and `**/pglite/`.
+- **Stars:**
+  - Quiz: 3 for a perfect first try, 2 for a first-try pass, 1 for a later pass.
+  - Lab: 3 for a first check with no hints, 2 with at most one hint, 1 otherwise or after the solution.
+  - A level clears when its quiz and all its labs are cleared; its stars are the lowest of them.
 
-End every GitHub post with the Claude Code footer.
-
-## User decisions (don't re-ask)
-- Show tokens, not dollars, in the UI. **No** token allowance window.
-- Public single-user installs are protected by a shared password (`APP_PASSWORD`). Clerk comes only in cloud mode (milestone 8).
-- Locally: PGlite. Cloud: Neon. Sentry is for maintainers and hosted deployments only, gated on a DSN.
-- Use AI only for intake and generation. Grading is deterministic, based on test cases. Any extra AI call must warn the user first.
-- The plan is locked after generation. Changes go into a new branched course.
-- Dark mode is the default, with a light switch. Gamify heavily: ranks Iron→Emerald, streaks, XP, quests, chest, bosses. Pip fills up Waterllama-style. Everything is fluid and mobile-first with 44px targets, and every animation has a reduced-motion fallback.
-- Skills to use: ponytail, karpathy-guidelines, taste-skill (app screens), ui-ux-pro-max, coderabbit. Don't use unslop.
+## Owner decisions (don't re-ask)
+- Show tokens, not dollars. There is no token allowance window. The plan is locked after generation.
+- Use AI only for intake, generation and lab repair. Grading is deterministic. Any later AI call warns the user first.
+- Password gate for public self-hosting. Clerk is cloud-only (M8). PGlite locally, Neon in the cloud. Sentry only with a DSN.
+- Dark by default with a light switch. Gamify heavily. Mobile-first with 44px targets. Every animation has a reduced-motion fallback.
+- The owner may host a paid version (₹199/299/599 a month). A 600K-token course costs about $9 on Opus, $4.60 on Sonnet or $0.23 on Haiku. Model mixing and caching are done.
+- **Lab isolation:** learner code and queries run only in the browser (WASM). The server runs model reference solutions in the sandboxes above, and replays learner terminal commands in the in-memory shell simulator (no real processes; capped files, size, regex engine and time). No per-session containers in v1; hardened per-session VMs are a cloud-mode idea for real Docker labs later.
 - Keep replies short and say what wasn't checked.
+
+## Backlog from the owner (later, not now)
+- Terminal tab completion (not built).
+- A motion pass across the app: animated typing (the describe box on /new and text appearing), visual feedback on every input and action, and animation wherever it fits, each with a reduced-motion fallback.
+
+## Known shortcuts (`grep -rn "shortcut:" src`)
+- **Faked results:** for quiz instant-check and for log and code labs, the browser reports its results, so a learner could fake them. Fine for self-study; re-run on the server before any leaderboard. Terminal labs are replayed on the server.
+- **Estimate:** `estimate.ts` prices all input at the full rate and its token constants are untuned. There is no real Claude run yet (no key).
+- **Audit:** 10 npm audit findings already existed before this work, in Sentry and Inngest (one high: an old zod inside Inngest). New dependencies added none.
 
 ## Run and verify
 ```
 npm ci
-npm run dev                       # http://localhost:3000, PGlite in ./data
-KL_FAKE_AI=1 npm run dev          # m2/m3: fixtures, no API key needed
-npx inngest-cli dev               # m3: needed for generation (or docker compose up)
+KL_FAKE_AI=1 npm run dev           # fixtures, no key; generation needs the Inngest dev server (npm run dev starts both)
 npm run lint && npm run typecheck && npm test && npm run build
 ```
-Notes:
-- `typecheck` runs `next typegen` first.
-- Tests use in-memory PGlite, configured in `vitest.config.ts`.
-- The Docker build is only verified in CI; the sandbox hits Docker Hub rate limits.
+For a production click-through:
+1. Run `npm run build`.
+2. In one terminal run `KL_FAKE_AI=1 APP_SECRET=x PGLITE_DIR=/tmp/kustomlearn-db INNGEST_DEV=1 npx next start -p 3200`; in a second, `npx inngest-cli dev -u http://localhost:3200/api/inngest --no-discovery`.
+3. Run `curl -X PUT localhost:3200/api/inngest`.
+4. Drive the app with Playwright.
+
+On the fixture data, level 1 has no lab with the default plan. Clear its quiz with the answer at index 1.
 
 ## Gotchas
-- **Database:** the DB is a singleton on `globalThis.__kustomlearnDb`, because each Next bundle loads its own module copy.
+- **Database:** the DB is a singleton on `globalThis.__kustomlearnDb`.
 - **Next 16:**
-  - Request-time data needs `await connection()`.
-  - `usePathname` must sit inside `<Suspense>`.
+  - Use `await connection()` for request-time data.
+  - Put `usePathname` under `<Suspense>`.
   - Middleware is `src/proxy.ts`.
-- **Forms:** use `onSubmit` + `startTransition`, not `action=`. React resets fields after a form action.
-- **Hosted mode:** `currentUserId()` throws when `DATABASE_URL` is set, failing closed until Clerk lands.
-- **Shell:** shell-safety blocks heredocs that contain backticks or `$`. Use Write/Edit. Kill dev servers by PID, not `pkill`.
-
-## Backlog from the owner (do later, not now)
-- Motion pass across the app: animate typing (e.g. the describe box on /new and text as it appears), visual feedback on every input and action, and animations wherever they fit. Each one needs a `prefers-reduced-motion` fallback.
+  - Run `typecheck` with `rm -rf .next` first if types from another branch linger.
+- **Forms:** use `onSubmit` + `startTransition`, not `action=`.
+- **Hosted mode:** `currentUserId()` throws when `DATABASE_URL` is set, failing closed. Anything rendered in the shell must also check the password session, because the shell wraps `/login`. See `SidebarCourses`.
+- **Turbopack:**
+  - It rewrites `require.resolve` into module numbers. Use eval workers with bare imports resolved from the cwd (see `src/lib/labs/validate.ts`), or paths built from `process.cwd()`.
+  - The QuickJS "mjs" build imports `module`, so the browser needs the browser build.
+- **Node permission model:** this container sets `NODE_OPTIONS=--use-openssl-ca`, which breaks `--permission`. Spawn sandboxes with an explicit minimal `env`.
+- **Shell:** shell-safety blocks heredocs containing backticks or `$`; use Write/Edit or Python. Kill servers by PID (`ps -eo pid=,args= | awk '/next-server/ {print $1}'`), not `pkill -f`, which can kill your own shell.
+- **Tests:** each lab validation boots its own engine (1–3 s), so tests with labs need 30–60 s timeouts. The default test courses set `labs: 0`.
 
 ## Later milestones
-- 4: course player (lessons, quizzes, world map)
-- 5: labs (code, terminal, logs) with validation in the pipeline
 - 6: gamification engine
-- 7: branching, export/import, consent
+- 7: branching, `.kustom` export/import, consent dialog
 - 8: Clerk, Neon, cloud
-
-Real Claude calls are still untested because there's no key. The token constants in `src/lib/estimate.ts` need retuning against real usage.

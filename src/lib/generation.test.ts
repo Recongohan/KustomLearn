@@ -9,9 +9,9 @@ process.env.KL_FAKE_AI = "1"; // each fake call reports 11K tokens
 const { getDb, schema } = await import("@/db");
 const { runOutline, runModule, finalize, progressOf } = await import("./generation");
 
-async function newCourse(capTokens: number) {
+async function newCourse(capTokens: number, extra: Record<string, unknown> = {}) {
   const db = await getDb();
-  const variation = { ...fakeIntake("soc").variations[0], modules: 3 };
+  const variation = { ...fakeIntake("soc").variations[0], modules: 3, labs: { code: 0, terminal: 0, logs: 0 }, ...extra };
   const [c] = await db
     .insert(schema.courses)
     .values({ userId: "local", title: "t", request: "soc", intent: "i", category: "c", variation, budgetCapTokens: capTokens })
@@ -73,4 +73,31 @@ describe("generation pipeline", () => {
     const id = await newCourse(1_000_000);
     expect(await progressOf(id, "someone-else")).toBeNull();
   });
+
+  it("validates each lab against its reference solution and repairs a broken one", async () => {
+    const id = await newCourse(1_000_000, { modules: 1, labs: { code: 0, terminal: 0, logs: 1 } });
+    await runOutline(id);
+    await runModule(id, 0); // the fake lab's solution is broken until one repair fixes it
+    const db = await getDb();
+    const [m] = await db.select().from(schema.modules).where(eq(schema.modules.courseId, id));
+    const labs = (m.content as { labs: { kind: string; expected: { rows: unknown[][] } }[] }).labs;
+    expect(labs).toHaveLength(1);
+    expect(labs[0].kind).toBe("logs");
+    expect(labs[0].expected.rows).toEqual([["203.0.113.7", "14"]]);
+    const calls = await db.select().from(schema.aiCalls).where(eq(schema.aiCalls.courseId, id));
+    expect(calls.map((c) => c.reason)).toEqual(expect.arrayContaining([expect.stringMatching(/^Repair /)]));
+    expect((await progressOf(id, "local"))!.spentTokens).toBe(3 * 11_000); // outline, module, one repair
+  }, 30_000);
+
+  it("validates Python and JavaScript code labs and keeps their reference results", async () => {
+    const id = await newCourse(1_000_000, { modules: 1, labs: { code: 2, terminal: 0, logs: 0 } });
+    await runOutline(id);
+    await runModule(id, 0);
+    const db = await getDb();
+    const [m] = await db.select().from(schema.modules).where(eq(schema.modules.courseId, id));
+    const labs = (m.content as { labs: { kind: string; language: string; expected: string[] }[] }).labs;
+    expect(labs.map((l) => [l.kind, l.language])).toEqual([["code", "python"], ["code", "javascript"]]);
+    expect(labs[0].expected).toEqual(["{}", '{"amy":1}', '{"amy":2,"cat":1}', "{}"]);
+    expect(labs[1].expected).toEqual(['"203.0.x.x"', '"10.0.x.x"', '"127.0.x.x"']);
+  }, 60_000);
 });

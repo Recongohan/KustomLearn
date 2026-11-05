@@ -59,6 +59,8 @@ export const progress = pgTable(
     score: integer("score"),
     attempts: integer("attempts").notNull().default(0),
     stars: integer("stars").notNull().default(0),
+    hintsUsed: integer("hints_used").notNull().default(0), // labs: how many tiered hints were opened
+    solutionSeen: integer("solution_seen").notNull().default(0), // labs: 1 once the solution was unlocked
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.userId, t.courseId, t.itemId] })], // item ids repeat across courses and forks

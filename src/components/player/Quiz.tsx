@@ -98,7 +98,7 @@ export function Quiz({ courseId, position, questions, best }: Props) {
             <p className="text-muted">
               <span className="tabular-nums">{result.correct.filter(Boolean).length} of {result.correct.length}</span> right.{" "}
               {result.passed
-                ? result.best > result.stars ? `Your best here stays at ${result.best} stars.` : result.next != null ? "The next level is open." : "That was the last level."
+                ? result.best > result.stars ? `Your best here stays at ${result.best} stars.` : result.next != null ? "The next level is open." : result.last ? "That was the last level." : "Clear this level's labs to open the next one."
                 : `Get ${Math.ceil(result.correct.length * 0.7)} right to open the next level.`}
             </p>
             <div className="flex w-full flex-col gap-3 sm:flex-row">

@@ -1,6 +1,8 @@
 import { costMicros } from "./pricing";
 import type { Intake } from "./intake";
-import { GenerationError, type ModuleContent, type Outline } from "./generate";
+import { GenerationError, type Outline } from "./generate";
+import type { CodeLab, LogsLab, TerminalLab } from "../labs/types";
+import type { LabCounts } from "./generate";
 
 const FAKE_USAGE = { inputTokens: 5_000, outputTokens: 6_000, costMicros: costMicros("claude-opus-5-5", 5_000, 6_000) };
 
@@ -26,7 +28,7 @@ export function fakeOutline(modules: number, maxTokens: number): { data: Outline
   };
 }
 
-export function fakeModule(title: string, maxTokens: number): { data: ModuleContent; usage: typeof FAKE_USAGE } {
+export function fakeModule(title: string, maxTokens: number, labs: LabCounts = { logs: 0, code: 0, terminal: 0 }) {
   fakeLimit(maxTokens);
   return {
     data: {
@@ -36,6 +38,9 @@ export function fakeModule(title: string, maxTokens: number): { data: ModuleCont
       ],
       diagram: "flowchart LR\n  A[Alert] --> B[Triage] --> C{Real?}\n  C -->|yes| D[Escalate]\n  C -->|no| E[Close]",
       quiz: [{ question: "Which Windows event ID is a failed logon?", choices: ["4624", "4625", "4688", "4720"], answer: 1, explanation: "4625 records a failed logon attempt." }],
+      labs: Array.from({ length: labs.logs }, () => ({ ...FAKE_LAB, solution: "select attacker_ip from auth_log" })), // broken until repaired
+      codeLabs: Array.from({ length: labs.code }, (_, i) => (i % 2 ? FAKE_JS_LAB : FAKE_PY_LAB)),
+      terminalLabs: Array.from({ length: labs.terminal }, () => FAKE_TERMINAL_LAB),
     },
     usage: FAKE_USAGE,
   };
@@ -55,3 +60,85 @@ export function fakeIntake(request: string): Intake {
     ],
   };
 }
+
+// A fake lab whose solution fails until it is "repaired", so tests and demos exercise the repair path too.
+export const FAKE_LAB: LogsLab = {
+  title: "Find the brute-force source",
+  task: "The `auth_log` table holds SSH logins. Which source IPs failed to log in more than 5 times? Return `ip` and the number of failures.",
+  setup: `create table auth_log (ts timestamptz not null, host text not null, username text not null, ip text not null, ok boolean not null);
+insert into auth_log
+select timestamptz '2026-11-01 08:00Z' + (n * interval '7 minutes'), 'web-0' || (n % 3), (array['amy','bob','cat','dev'])[1 + n % 4], '10.0.0.' || (1 + n % 9), n % 5 <> 0
+from generate_series(1, 120) n;
+insert into auth_log
+select timestamptz '2026-11-02 03:00Z' + (n * interval '20 seconds'), 'web-01', 'root', '203.0.113.7', false
+from generate_series(1, 14) n;`,
+  starter: "select ip, ok\nfrom auth_log\nlimit 10",
+  solution: "select ip, count(*) as failures from auth_log where not ok group by ip having count(*) > 5",
+  walkthrough: "Keep only failed logins (`where not ok`), group them by `ip`, and keep the groups with more than 5 rows (`having count(*) > 5`). The attacker's IP stands out with 14 failures in under 5 minutes.",
+  hints: ["Only the failed logins matter here.", "Group the failed rows by `ip` and count them.", "Filter groups with `having count(*) > 5`."],
+  ordered: false,
+};
+
+export function fakeRepair<L extends LogsLab | CodeLab | TerminalLab>(lab: L, maxTokens: number) {
+  fakeLimit(maxTokens);
+  return { data: { ...lab, solution: "entry" in lab || "checks" in lab ? lab.solution : FAKE_LAB.solution }, usage: FAKE_USAGE };
+}
+
+export const FAKE_PY_LAB: CodeLab = {
+  title: "Count failures per user",
+  task: "Write `failures_by_user(events)`. Each event is `{\"user\": str, \"ok\": bool}`. Return a dict from each user to how many of their events failed, leaving out users with none.\n\nExample: `[{\"user\": \"amy\", \"ok\": false}, {\"user\": \"bob\", \"ok\": true}]` gives `{\"amy\": 1}`.",
+  language: "python",
+  entry: "failures_by_user",
+  starter: "def failures_by_user(events):\n    counts = {}\n    # your code here\n    return counts\n",
+  solution: "def failures_by_user(events):\n    counts = {}\n    for e in events:\n        if not e['ok']:\n            counts[e['user']] = counts.get(e['user'], 0) + 1\n    return counts\n",
+  walkthrough: "Walk the events once. For each failure, add one to that user's count, starting from 0 with `dict.get`. Users who never fail never get a key.",
+  hints: ["Loop over the events and skip the successful ones.", "Keep a dict and add one for the user of each failure.", "`counts.get(user, 0) + 1` starts a new user at 1."],
+  tests: [
+    { name: "no events", args: "[[]]" },
+    { name: "one failure", args: '[[{"user": "amy", "ok": false}, {"user": "bob", "ok": true}]]' },
+    { name: "repeat offender", args: '[[{"user": "amy", "ok": false}, {"user": "amy", "ok": false}, {"user": "cat", "ok": false}]]' },
+    { name: "all fine", args: '[[{"user": "amy", "ok": true}]]' },
+  ],
+};
+
+export const FAKE_JS_LAB: CodeLab = {
+  title: "Mask the IPs",
+  task: "Write `maskIp(ip)`: keep the first two parts of an IPv4 address and replace the rest with `x`.\n\nExample: `maskIp(\"203.0.113.7\")` gives `\"203.0.x.x\"`.",
+  language: "javascript",
+  entry: "maskIp",
+  starter: "function maskIp(ip) {\n  return ip;\n}\n",
+  solution: "function maskIp(ip) {\n  const [a, b] = ip.split('.');\n  return `${a}.${b}.x.x`;\n}\n",
+  walkthrough: "Split on dots, keep the first two parts, and join them with two `x` parts.",
+  hints: ["`ip.split('.')` gives the four parts.", "You only need the first two.", "Build the string with a template literal."],
+  tests: [
+    { name: "public address", args: '["203.0.113.7"]' },
+    { name: "private address", args: '["10.0.0.42"]' },
+    { name: "loopback", args: '["127.0.0.1"]' },
+  ],
+};
+
+export const FAKE_TERMINAL_LAB: TerminalLab = {
+  title: "Pull the attacker's IP",
+  task: "`/var/log/auth.log` holds a night of SSH logins. Save every source IP with a failed password, once each and sorted, to `~/case/ips.txt`.",
+  files: [
+    {
+      path: "/var/log/auth.log",
+      content:
+        "Nov  2 03:00:01 web-01 sshd[811]: Failed password for root from 203.0.113.7 port 52110 ssh2\n" +
+        "Nov  2 03:00:04 web-01 sshd[812]: Accepted password for amy from 10.0.0.2 port 40112 ssh2\n" +
+        "Nov  2 03:00:09 web-01 sshd[813]: Failed password for admin from 203.0.113.7 port 52114 ssh2\n" +
+        "Nov  2 03:01:12 web-01 sshd[820]: Failed password for bob from 198.51.100.23 port 61002 ssh2\n" +
+        "Nov  2 03:02:40 web-01 sshd[826]: Accepted password for cat from 10.0.0.5 port 40190 ssh2\n",
+    },
+    { path: "/home/learner/README.txt", content: "Put your findings in ~/case.\n" },
+  ],
+  solution: ["mkdir case", "grep 'Failed password' /var/log/auth.log | cut -d' ' -f12 | sort -u > case/ips.txt", "cat case/ips.txt"],
+  walkthrough: "`grep` keeps the failed lines, `cut -d' ' -f12` takes the IP field (the double space after `Nov` counts as an empty field), `sort -u` sorts and drops repeats, and `>` saves the result.",
+  hints: ["Start by making the `case` directory with `mkdir`.", "`grep 'Failed password'` keeps only the failures; `cut` can pick one field.", "Finish the pipe with `sort -u` and redirect it with `> case/ips.txt`."],
+  checks: [
+    { name: "case folder exists", kind: "exists", path: "~/case", text: "dir" },
+    { name: "ips.txt has the attacker", kind: "contains", path: "~/case/ips.txt", text: "203.0.113.7" },
+    { name: "ips.txt has the second IP", kind: "contains", path: "~/case/ips.txt", text: "198.51.100.23" },
+    { name: "no successful logins listed", kind: "lacks", path: "~/case/ips.txt", text: "10.0.0" },
+  ],
+};

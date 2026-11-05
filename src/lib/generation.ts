@@ -1,7 +1,9 @@
 import "server-only";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { getDb, schema } from "@/db";
-import { GenerationError, STEP_MAX_OUTPUT, generateModule, generateOutline, type CourseBrief, type Outline, type Usage } from "./ai/generate";
+import { GenerationError, STEP_MAX_OUTPUT, generateModule, generateOutline, repairLab, type CourseBrief, type LabCounts, type ModuleContent, type Outline, type Usage } from "./ai/generate";
+import type { CodeLab, LogsLab, StoredLab, TerminalLab } from "./labs/types";
+import { validateCodeLab, validateLab, validateTerminalLab } from "./labs/validate";
 import { IN_PER_CALL } from "./estimate";
 import type { Variation } from "./ai/intake";
 import { writerFor, type PricedModel } from "./ai/pricing";
@@ -109,18 +111,79 @@ export async function runModule(courseId: string, position: number): Promise<Ste
   const { apiKey, model: chosen } = await credentials(course.userId);
   const model = writerFor(chosen);
   const reason = `Write module ${position + 1}: ${mod.title}`;
+  const counts = labsFor(course, position); // the learner chose these; extra labs the model returns are ignored
   let result;
   try {
-    result = await generateModule(briefOf(course), plan, position, { apiKey, model, maxTokens: room });
+    result = await generateModule(briefOf(course), plan, position, counts, { apiKey, model, maxTokens: room });
   } catch (err) {
     return chargeFailure(err, course, model, room, STEP_MAX_OUTPUT.module, reason);
   }
   const { data, usage } = result;
+  const labs: StoredLab[] = [];
+  const wanted = [...data.labs.slice(0, counts.logs), ...data.codeLabs.slice(0, counts.code), ...data.terminalLabs.slice(0, counts.terminal)];
+  for (const [k, lab] of wanted.entries()) {
+    const ok = await checkOrRepair(course, model, lab, `${reason}, lab ${k + 1}`, usage.inputTokens + usage.outputTokens);
+    if (ok) labs.push(ok);
+  }
+  const content: ModuleContent = { sections: data.sections, diagram: data.diagram, quiz: data.quiz, labs };
   await db.transaction(async (tx) => {
-    await tx.update(schema.modules).set({ content: data }).where(eq(schema.modules.id, mod.id));
+    await tx.update(schema.modules).set({ content }).where(eq(schema.modules.id, mod.id));
     await charge(tx, courseId, course.userId, model, usage, reason);
   });
   return { paused: false, modules: plan.modules.length };
+}
+
+/** Spreads the variation's labs evenly over the modules. */
+export function labsFor(course: typeof schema.courses.$inferSelect, position: number): LabCounts {
+  const v = course.variation as Variation;
+  const share = (total: number) => Math.floor(((position + 1) * total) / v.modules) - Math.floor((position * total) / v.modules);
+  return { logs: share(v.labs.logs), code: share(v.labs.code), terminal: share(v.labs.terminal) };
+}
+
+async function check(lab: LogsLab | CodeLab | TerminalLab): Promise<{ ok: true; stored: StoredLab } | { ok: false; error: string }> {
+  if ("checks" in lab) {
+    const r = validateTerminalLab(lab);
+    return r.ok ? { ok: true, stored: { ...lab, kind: "terminal" } } : r;
+  }
+  if ("entry" in lab) {
+    const r = await validateCodeLab(lab);
+    return r.ok ? { ok: true, stored: { ...lab, tests: r.tests, kind: "code", expected: r.expected } } : r;
+  }
+  const r = await validateLab(lab);
+  return r.ok ? { ok: true, stored: { ...lab, kind: "logs", expected: r.expected } } : r;
+}
+
+const REPAIRS = 2;
+
+/**
+ * Runs a lab's reference solution against its own data; a failing lab is repaired up to twice within the cap.
+ * Repairs are charged as they happen. A lab still broken after that is dropped, so the course stays playable.
+ */
+async function checkOrRepair(course: typeof schema.courses.$inferSelect, model: PricedModel, lab: LogsLab | CodeLab | TerminalLab, reason: string, pending: number): Promise<StoredLab | null> {
+  const { apiKey } = await credentials(course.userId);
+  let current = lab;
+  for (let attempt = 0; ; attempt++) {
+    const result = await check(current);
+    if (result.ok) return result.stored;
+    if (attempt >= REPAIRS) return null;
+    const fresh = (await loadCourse(course.id)).course;
+    // `pending`: the module's own tokens, charged only once the whole step is saved.
+    const room = roomLeft({ ...fresh, spentTokens: fresh.spentTokens + pending });
+    if (room == null) return null; // no budget left to repair: drop the lab rather than pass the cap
+    try {
+      const fixed = await repairLab(briefOf(fresh), current, result.error, { apiKey, model, maxTokens: room });
+      const db = await getDb();
+      await db.transaction((tx) => charge(tx, course.id, course.userId, model, fixed.usage, `Repair ${reason}`));
+      current = fixed.data;
+    } catch (err) {
+      if (err instanceof GenerationError && err.usage) {
+        const db = await getDb();
+        const usage = err.usage;
+        await db.transaction((tx) => charge(tx, course.id, course.userId, model, usage, `Repair ${reason} (incomplete)`));
+      }
+      return null;
+    }
+  }
 }
 
 export async function finalize(courseId: string) {
