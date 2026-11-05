@@ -11,7 +11,11 @@ async function KeyStatus() {
         Connect your Anthropic key
       </Link>
     );
-  return <p className="text-muted">Key connected. The course builder lands in the next milestone.</p>;
+  return (
+    <Link href="/new" className="inline-flex h-13 items-center gap-2 rounded-2xl bg-green px-5 text-base font-bold text-[#06281a] shadow-[0_4px_0_#1a9a62] transition-transform hover:-translate-y-px active:translate-y-px">
+      Start a course
+    </Link>
+  );
 }
 
 export default function Home() {
