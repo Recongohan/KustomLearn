@@ -10,7 +10,7 @@ describe("tokens", () => {
     expect(estimate(v, "claude-haiku-5-5").capTokens).toBe(estimate(v, "claude-opus-5-5").capTokens);
   });
 });
-import { billedUsage, costMicros } from "./ai/pricing";
+import { billedUsage, costMicros, fallbackParams, writerFor } from "./ai/pricing";
 import { normalize } from "./ai/intake";
 import { fakeIntake } from "./ai/fixtures";
 
@@ -78,5 +78,21 @@ describe("billed usage", () => {
   });
   it("prices an unknown model at the highest known rate", () => {
     expect(billedUsage({ input_tokens: 0, output_tokens: 0, iterations: [{ input_tokens: 1_000_000, output_tokens: 0, model: "claude-new" }] }, "claude-haiku-5-5").costMicros).toBe(5_000_000);
+  });
+});
+
+describe("caching and model mix", () => {
+  it("counts cache writes and reads as input tokens, priced at their own rates", () => {
+    const u = billedUsage({ input_tokens: 100, output_tokens: 0, cache_creation_input_tokens: 1000, cache_read_input_tokens: 10_000 }, "claude-sonnet-5-5");
+    expect(u.inputTokens).toBe(11_100);
+    expect(u.costMicros).toBe(100 * 2 + 1000 * 2 * 1.25 + 10_000 * 0.2);
+  });
+  it("writes lessons on Sonnet when Opus plans, and keeps the chosen model otherwise", () => {
+    expect(writerFor("claude-opus-5-5")).toBe("claude-sonnet-5-5");
+    expect(writerFor("claude-haiku-5-5")).toBe("claude-haiku-5-5");
+  });
+  it("sends no fallback parameter to Haiku", () => {
+    expect(fallbackParams("claude-haiku-5-5")).toEqual({});
+    expect(fallbackParams("claude-opus-5-5")).toMatchObject({ fallbacks: "default" });
   });
 });

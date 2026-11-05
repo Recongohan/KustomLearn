@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { saveSettingsAction, type SaveState } from "./actions";
 
 const LABELS: Record<string, string> = {
-  "claude-opus-5-5": "Claude Opus 5.5 · best courses",
+  "claude-opus-5-5": "Claude Opus 5.5 plans, Sonnet 5.5 writes · best courses",
   "claude-sonnet-5-5": "Claude Sonnet 5.5 · faster, cheaper",
   "claude-haiku-5-5": "Claude Haiku 5.5 · cheapest",
 };

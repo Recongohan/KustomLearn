@@ -2,7 +2,8 @@ import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
-import { billedUsage, type PricedModel } from "./pricing";
+import { billedUsage, fallbackParams, type PricedModel } from "./pricing";
+import { parseOutput, STRUCTURED_BETA } from "./structured";
 
 export const Variation = z.object({
   name: z.string(),
@@ -75,19 +76,22 @@ export async function understand(request: string, opts: { apiKey: string; model:
   }
 
   const client = new Anthropic({ apiKey: opts.apiKey, timeout: 90_000 });
-  const res = await client.beta.messages.parse({
+  const format = betaZodOutputFormat(Intake);
+  const fallback = fallbackParams(opts.model); // security topics can trip cyber classifiers; reroute instead of failing
+  const res = await client.beta.messages.create({
     model: opts.model,
     max_tokens: 4000,
-    betas: ["server-side-fallback-2026-07-01"],
-    fallbacks: "default", // security topics can trip cyber classifiers; reroute instead of failing
-    output_config: { effort: "low", format: betaZodOutputFormat(Intake) },
+    ...fallback,
+    betas: [...(fallback.betas ?? []), STRUCTURED_BETA],
+    output_config: { effort: "low", format },
     system: SYSTEM,
     messages: [{ role: "user", content: request }],
   });
   const usage = billedUsage(res.usage, opts.model); // charged even when the answer can't be used
   if (res.stop_reason === "refusal") throw new IntakeError("The model declined this request. Try describing it differently.", usage);
-  if (!res.parsed_output) throw new IntakeError("Couldn't understand that. Try again in a moment.", usage);
-  const intake = normalize(res.parsed_output);
+  const parsed = parseOutput(res, format);
+  if (!parsed) throw new IntakeError("Couldn't understand that. Try again in a moment.", usage);
+  const intake = normalize(parsed);
   if (intake.inScope && (!intake.intent || intake.variations.length !== 3 || intake.variations.some((v) => !v.outcomes.length))) throw new IntakeError("Couldn't build three options. Try again.", usage);
   return { intake, ...usage };
 }

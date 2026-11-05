@@ -61,11 +61,11 @@ export async function createCourseAction(input: z.input<typeof CreateInput>): Pr
 
   const userId = currentUserId();
   const { model } = await getSettings(userId);
-  const { capMicros } = estimate(variation, model); // recomputed here; never trust a client-sent cost
+  const { capMicros, capTokens } = estimate(variation, model); // recomputed here; never trust a client-sent cost
   const db = await getDb();
   const [course] = await db
     .insert(schema.courses)
-    .values({ userId, title: variation.name, request, intent, category, variation, budgetCapMicros: capMicros })
+    .values({ userId, title: variation.name, request, intent, category, variation, budgetCapMicros: capMicros, budgetCapTokens: capTokens })
     .returning({ id: schema.courses.id });
   redirect(`/course/${course.id}`);
 }
