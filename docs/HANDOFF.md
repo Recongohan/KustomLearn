@@ -82,7 +82,7 @@ npm run lint && npm run typecheck && npm test && npm run build
 ```
 For a production click-through:
 1. Run `npm run build`.
-2. Start `KL_FAKE_AI=1 APP_SECRET=x PGLITE_DIR=<tmp>/db INNGEST_DEV=1 npx next start -p 3200` and `npx inngest-cli dev -u http://localhost:3200/api/inngest --no-discovery`.
+2. Start `KL_FAKE_AI=1 APP_SECRET=x PGLITE_DIR=/tmp/kustomlearn-db INNGEST_DEV=1 npx next start -p 3200` and `npx inngest-cli dev -u http://localhost:3200/api/inngest --no-discovery`.
 3. Run `curl -X PUT localhost:3200/api/inngest`.
 4. Drive the app with Playwright.
 
