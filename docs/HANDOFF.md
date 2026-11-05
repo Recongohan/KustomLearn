@@ -72,6 +72,8 @@ PRs are stacked. Each targets the branch before it:
 ## Known shortcuts (`grep -rn "shortcut:" src`)
 - **Faked results:** for quiz instant-check and for log and code labs, the browser reports its results, so a learner could fake them. Fine for self-study; re-run on the server before any leaderboard. Terminal labs are replayed on the server.
 - **Estimate:** `estimate.ts` prices all input at the full rate and its token constants are untuned. There is no real Claude run yet (no key).
+- **Lab repair retries:** a module is one Inngest step, so if it crashes after a lab repair, the retry regenerates and repairs again. The first try's repair tokens stay counted, because they were really spent, and the cap still bounds the total. The fix is to make each lab check or repair its own durable step.
+- **Pyodide cache:** `/pyodide/*` URLs aren't versioned, so they are cached for a day rather than a year. Put the version in the path at the next Pyodide upgrade.
 - **Audit:** 10 npm audit findings already existed before this work, in Sentry and Inngest (one high: an old zod inside Inngest). New dependencies added none.
 
 ## Run and verify
