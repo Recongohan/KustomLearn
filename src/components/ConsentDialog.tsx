@@ -18,7 +18,7 @@ export function ConsentDialog({ open, reason, tokens, pending, onConfirm, onCanc
   return (
     <dialog
       ref={ref}
-      onCancel={(e) => (e.preventDefault(), onCancel())}
+      onCancel={(e) => (e.preventDefault(), !pending && onCancel())} // Esc can't "cancel" a request already under way
       aria-labelledby="consent-h"
       className="m-auto w-[min(92vw,440px)] rounded-3xl border border-line bg-panel p-6 text-text shadow-2xl backdrop:bg-black/60 open:animate-[kl-rise_0.3s_ease-out]"
     >

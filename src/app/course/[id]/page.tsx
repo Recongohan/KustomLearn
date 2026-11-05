@@ -13,11 +13,11 @@ import { getSettings } from "@/lib/settings";
 import { BranchForm } from "./BranchForm";
 
 /** The course this one was branched from, if it still exists. */
-async function parentOf(courseId: string) {
+async function parentOf(courseId: string, userId: string) {
   const db = await getDb();
-  const [c] = await db.select({ parentId: schema.courses.parentCourseId, from: schema.courses.forkedAtModule, userId: schema.courses.userId }).from(schema.courses).where(eq(schema.courses.id, courseId));
+  const [c] = await db.select({ parentId: schema.courses.parentCourseId, from: schema.courses.forkedAtModule, userId: schema.courses.userId }).from(schema.courses).where(and(eq(schema.courses.id, courseId), eq(schema.courses.userId, userId)));
   if (!c?.parentId) return null;
-  const [p] = await db.select({ id: schema.courses.id, title: schema.courses.title }).from(schema.courses).where(and(eq(schema.courses.id, c.parentId), eq(schema.courses.userId, c.userId)));
+  const [p] = await db.select({ id: schema.courses.id, title: schema.courses.title }).from(schema.courses).where(and(eq(schema.courses.id, c.parentId), eq(schema.courses.userId, userId)));
   return p ? { ...p, from: c.from ?? 0 } : null;
 }
 
@@ -28,7 +28,7 @@ async function Course({ id }: { id: Promise<string> }) {
   const progress = /^[0-9a-f-]{36}$/.test(courseId) ? await progressOf(courseId, userId) : null;
   if (!progress) notFound();
   if (progress.status === "ready") {
-    const [map, { model }, parent] = await Promise.all([courseMap(courseId, currentUserId()).then((m) => m!), getSettings(), parentOf(courseId)]);
+    const [map, { model }, parent] = await Promise.all([courseMap(courseId, userId).then((m) => m!), getSettings(), parentOf(courseId, userId)]);
     const today = new Date().toISOString().slice(0, 10);
     return (
       <div className="flex flex-col gap-6">

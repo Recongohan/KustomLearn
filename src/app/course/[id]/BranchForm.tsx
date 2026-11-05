@@ -45,6 +45,7 @@ export function BranchForm({ courseId, levels, variation, model }: Props) {
               key={l.position}
               type="button"
               aria-pressed={from === l.position}
+              aria-label={`Level ${l.position + 1}: ${l.title}`}
               title={l.title}
               onClick={() => setFrom(l.position)}
               className="h-11 min-w-11 rounded-xl border-2 border-track bg-panel-2 px-3 font-display font-extrabold text-muted transition-colors aria-pressed:border-blue aria-pressed:bg-blue aria-pressed:text-white"

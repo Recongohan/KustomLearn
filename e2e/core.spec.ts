@@ -30,11 +30,11 @@ test("builds a course from a description", async ({ page, request }) => {
 
 test("clears level 1 and gets the XP for it", async ({ page }) => {
   await page.goto(`${course}/m/1`);
-  await page.getByRole("radio").nth(1).click(); // the fixture's answer
+  await page.getByRole("radio", { name: "4625" }).click(); // the fixture's answer
   await page.getByRole("button", { name: /^Check$/ }).click();
   await page.getByRole("button", { name: /See result/ }).click();
-  await expect(page.getByText("Perfect clear")).toBeVisible();
-  await expect(page.getByText("+50 XP")).toBeVisible();
+  await expect(page.getByText("Perfect clear", { exact: true })).toBeVisible();
+  await expect(page.getByText("+50 XP", { exact: true })).toBeVisible();
 });
 
 test("passes a terminal lab, graded by the server's replay", async ({ page }) => {
@@ -44,7 +44,7 @@ test("passes a terminal lab, graded by the server's replay", async ({ page }) =>
   await prompt.fill("mkdir case");
   await prompt.press("Enter");
   await lab.getByRole("button", { name: "Check my work" }).click();
-  await expect(lab.getByText(/of 4 tests pass/)).toBeVisible();
+  await expect(lab.getByText("1 of 4 tests pass", { exact: true })).toBeVisible();
   await prompt.fill("grep 'Failed password' /var/log/auth.log | cut -d' ' -f12 | sort -u > case/ips.txt");
   await prompt.press("Enter");
   await lab.getByRole("button", { name: "Check my work" }).click();
@@ -55,7 +55,7 @@ test("passes a terminal lab, graded by the server's replay", async ({ page }) =>
 test("shows progress on the dashboard and pays a quest", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-  await expect(page.getByText("First blood")).toBeVisible();
+  await expect(page.getByText("Pass your first lab", { exact: true })).toBeVisible(); // unlocked: a locked trophy reads "Locked · …"
   const claim = page.getByRole("button", { name: "Claim +50" });
   await claim.click({ force: true }); // it pulses, so it never settles
   await expect(page.getByText("Claimed").first()).toBeVisible();

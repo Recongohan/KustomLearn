@@ -54,6 +54,9 @@ describe(".kustom bundles", () => {
     const lab = badLab.modules.flatMap((m) => m.content.labs ?? []).find((l) => l.kind === "terminal")!;
     if (lab.kind === "terminal") lab.solution = ["nmap 10.0.0.1"];
     expect(await importCourse(JSON.stringify(badLab), "x")).toMatchObject({ ok: false, error: expect.stringContaining("broken") });
+    const badCode = structuredClone(b);
+    badCode.modules[0].content.labs = [{ kind: "code", title: "Sum", task: "t", language: "python", entry: "f", starter: "", solution: "", walkthrough: "", hints: [], tests: [{ name: "a", args: "[1]" }], expected: [] } as never];
+    expect(await importCourse(JSON.stringify(badCode), "x")).toMatchObject({ ok: false, error: expect.stringContaining("broken") });
     const zero = structuredClone(b);
     zero.course.variation.modules = 0;
     expect(await importCourse(JSON.stringify(zero), "x")).toMatchObject({ ok: false, error: expect.stringContaining("incomplete") });

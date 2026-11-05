@@ -55,7 +55,7 @@ jobs:
           cache-to: type=gha,mode=max
 
   publish:
-    needs: docker
+    needs: [docker, e2e] # never publish an image the end-to-end tests failed on
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
