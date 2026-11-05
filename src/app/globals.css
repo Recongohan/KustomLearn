@@ -105,3 +105,5 @@ body {
 /* Section entrance: rises once as the page opens. Content stays visible if animations are off. */
 @keyframes kl-rise { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: none; } }
 .kl-in { animation: kl-rise 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+/* The global rule shortens animations but keeps inline delays, which would hide sections for a moment: drop it. */
+@media (prefers-reduced-motion: reduce) { .kl-in { animation: none; } }

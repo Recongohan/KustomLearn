@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import type { ModuleContent, Outline } from "./ai/generate";
 import type { Variation } from "./ai/intake";
@@ -105,24 +105,28 @@ export async function submitQuiz(courseId: string, userId: string, position: num
   const graded = gradeQuiz(quiz, answers);
 
   const id = itemId(position);
-  const [prev] = await db
-    .select()
-    .from(schema.progress)
-    .where(and(eq(schema.progress.userId, userId), eq(schema.progress.courseId, courseId), eq(schema.progress.itemId, id)));
-  const attempt = (prev?.attempts ?? 0) + 1;
-  const stars = starsFor(graded, attempt);
-  const best = Math.max(stars, prev?.stars ?? 0);
-  const values = {
-    status: prev?.status === "done" || graded.passed ? ("done" as const) : ("started" as const),
-    score: Math.round(Math.max(graded.score, (prev?.score ?? 0) / 100) * 100),
-    attempts: attempt,
-    stars: best,
-    updatedAt: new Date(),
-  };
-  await db
-    .insert(schema.progress)
-    .values({ userId, courseId, itemId: id, ...values })
-    .onConflictDoUpdate({ target: [schema.progress.userId, schema.progress.courseId, schema.progress.itemId], set: values });
+  const p = schema.progress;
+  const mine = and(eq(p.userId, userId), eq(p.courseId, courseId), eq(p.itemId, id));
+  // One atomic step claims this attempt's number, so two quick submits can't both count as the first try.
+  const [claimed] = await db
+    .insert(p)
+    .values({ userId, courseId, itemId: id, status: "started", attempts: 1 })
+    .onConflictDoUpdate({ target: [p.userId, p.courseId, p.itemId], set: { attempts: sql`${p.attempts} + 1`, updatedAt: new Date() } })
+    .returning({ attempts: p.attempts });
+  const stars = starsFor(graded, claimed.attempts);
+  // Merged in the database, so a concurrent submit can never lower the best stars, the best score or a cleared level.
+  const [row] = await db
+    .update(p)
+    .set({
+      stars: sql`greatest(${p.stars}, ${stars})`,
+      score: sql`greatest(coalesce(${p.score}, 0), ${Math.round(graded.score * 100)})`,
+      ...(graded.passed ? { status: "done" as const } : {}),
+      updatedAt: new Date(),
+    })
+    .where(mine)
+    .returning({ stars: p.stars, status: p.status });
+  const best = row.stars;
+  const values = { status: row.status };
 
   return {
     ...graded,
