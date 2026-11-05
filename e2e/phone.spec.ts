@@ -15,3 +15,11 @@ test("the tab bar navigates", async ({ page }) => {
   await expect(page).toHaveURL(/\/ranks$/);
   await expect(page.getByRole("heading", { name: "Ranks", level: 1 })).toBeVisible();
 });
+
+test("the header fits the narrowest phones (320px)", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 640 });
+  await page.goto("/");
+  const header = page.locator("header").first();
+  await expect(header.getByRole("link", { name: "Settings" })).toBeInViewport({ ratio: 1 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
