@@ -16,5 +16,5 @@ export async function GET(_req: Request, { params }: RouteContext<"/pyodide/[fil
   const type = Object.hasOwn(FILES, file) ? FILES[file] : undefined;
   if (!type) return new Response("Not found", { status: 404 }); // an allowlist: no path ever reaches the file system
   const body = await readFile(path.join(pyodideDir(), file));
-  return new Response(body, { headers: { "content-type": type, "cache-control": "public, max-age=31536000, immutable" } });
+  return new Response(body, { headers: { "content-type": type, "cache-control": "public, max-age=86400" /* unversioned URLs: a pyodide upgrade must reach browsers within a day */ } });
 }

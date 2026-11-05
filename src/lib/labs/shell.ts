@@ -177,6 +177,7 @@ function readInputs(c: Ctx, files: string[], name: string): { text: string } | R
     const node = c.sh.fs.get(resolve(c.sh, f));
     if (!node) return fail(`${name}: ${f}: No such file or directory`);
     if (node.type === "dir") return fail(`${name}: ${f}: Is a directory`);
+    if (text.length + node.content.length > MAX_TOTAL) return fail(`${name}: input too large`); // `cat f f f …` can't balloon
     text += node.content;
   }
   return { text };
@@ -369,12 +370,13 @@ const run: Record<(typeof COMMANDS)[number], (c: Ctx) => Result> = {
     const { values, rest } = opts(c.args, "df");
     const delim = values.d ?? "\t";
     if (!values.f) return fail("cut: you must specify a list of fields (-f)");
-    const fields = values.f.split(",").flatMap((p) => {
+    const picked = new Set<number>(); // fields 1..100 at most, each once, so `-f 1-1e9` or `-f 1-100,1-100,…` stays small
+    for (const p of values.f.split(",")) {
       const [a, b] = p.split("-").map((x) => (x === "" ? NaN : parseInt(x, 10)));
-      if (!p.includes("-")) return [a];
-      const lo = isNaN(a) ? 1 : Math.max(1, a), hi = isNaN(b) ? 100 : Math.min(100, b); // at most 100 fields, so `-f 1-1e9` can't allocate
-      return Array.from({ length: Math.max(0, hi - lo + 1) }, (_, i) => lo + i);
-    });
+      const lo = isNaN(a) ? 1 : Math.max(1, a), hi = !p.includes("-") ? a : isNaN(b) ? 100 : Math.min(100, b);
+      for (let f = lo; f <= hi && f <= 100; f++) picked.add(f);
+    }
+    const fields = [...picked].sort((x, y) => x - y);
     const r = readInputs(c, rest, "cut");
     if (!("text" in r)) return r;
     return ok(joinLines(lines(r.text).map((l) => { const parts = l.split(delim); return parts.length === 1 ? l : fields.map((f) => parts[f - 1]).filter((x) => x != null).join(delim); })));
@@ -452,7 +454,12 @@ export function exec(sh: Shell, line: string): Result {
       const argv = cmd.argv.flatMap((w) => expand(sh, w));
       const name = argv[0] as (typeof COMMANDS)[number];
       const fn = Object.hasOwn(run, name) ? run[name] : null;
-      const r: Result = fn ? fn({ sh, args: argv.slice(1), stdin }) : fail(`${argv[0]}: command not found`, 127);
+      let r: Result;
+      try {
+        r = fn ? fn({ sh, args: argv.slice(1), stdin }) : fail(`${argv[0]}: command not found`, 127);
+      } catch {
+        r = fail(`${argv[0]}: something went wrong`); // a bug in one command must not take down the replay
+      }
       err += r.err;
       code = r.code;
       let text = r.out;

@@ -56,7 +56,7 @@ PRs are stacked. Each targets the branch before it:
 - Password gate for public self-hosting. Clerk is cloud-only (M8). PGlite locally, Neon in the cloud. Sentry only with a DSN.
 - Dark by default with a light switch. Gamify heavily. Mobile-first with 44px targets. Every animation has a reduced-motion fallback.
 - The owner may host a paid version (₹199/299/599 a month). A 600K-token course costs about $9 on Opus, $4.60 on Sonnet or $0.23 on Haiku. Model mixing and caching are done.
-- **Lab isolation:** learner code runs only in the browser (WASM or simulator). The server runs only model reference solutions, in the sandboxes above. No per-session containers in v1; hardened per-session VMs are a cloud-mode idea for real Docker labs later.
+- **Lab isolation:** learner code and queries run only in the browser (WASM). The server runs model reference solutions in the sandboxes above, and replays learner terminal commands in the in-memory shell simulator (no real processes; capped files, size, regex engine and time). No per-session containers in v1; hardened per-session VMs are a cloud-mode idea for real Docker labs later.
 - Keep replies short and say what wasn't checked.
 
 ## Backlog from the owner (later, not now)
@@ -77,7 +77,7 @@ npm run lint && npm run typecheck && npm test && npm run build
 ```
 For a production click-through:
 1. Run `npm run build`.
-2. Start `KL_FAKE_AI=1 APP_SECRET=x PGLITE_DIR=/tmp/kustomlearn-db INNGEST_DEV=1 npx next start -p 3200` and `npx inngest-cli dev -u http://localhost:3200/api/inngest --no-discovery`.
+2. In one terminal run `KL_FAKE_AI=1 APP_SECRET=x PGLITE_DIR=/tmp/kustomlearn-db INNGEST_DEV=1 npx next start -p 3200`; in a second, `npx inngest-cli dev -u http://localhost:3200/api/inngest --no-discovery`.
 3. Run `curl -X PUT localhost:3200/api/inngest`.
 4. Drive the app with Playwright.
 
@@ -96,7 +96,7 @@ On the fixture data, level 1 has no lab with the default plan. Clear its quiz wi
   - It rewrites `require.resolve` into module numbers. Use eval workers with bare imports resolved from the cwd (see `src/lib/labs/validate.ts`), or paths built from `process.cwd()`.
   - The QuickJS "mjs" build imports `module`, so the browser needs the browser build.
 - **Node permission model:** this container sets `NODE_OPTIONS=--use-openssl-ca`, which breaks `--permission`. Spawn sandboxes with an explicit minimal `env`.
-- **Shell:** shell-safety blocks heredocs containing backticks or `$`; use Write/Edit or Python. Kill servers by PID (`ps -eo pid,args | awk '/next-server/…'`), not `pkill -f`, which can kill your own shell.
+- **Shell:** shell-safety blocks heredocs containing backticks or `$`; use Write/Edit or Python. Kill servers by PID (`ps -eo pid=,args= | awk '/next-server/ {print $1}'`), not `pkill -f`, which can kill your own shell.
 - **Tests:** each lab validation boots its own engine (1–3 s), so tests with labs need 30–60 s timeouts. The default test courses set `labs: 0`.
 
 ## Later milestones
