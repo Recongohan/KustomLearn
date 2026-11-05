@@ -38,7 +38,7 @@ export function preloadPython() {
 // One Python run at a time: the worker never loads Pyodide twice, and a timeout only ever stops its own run.
 let queue: Promise<unknown> = Promise.resolve();
 function runPython(code: string, entry: string, tests: string[]): Promise<CodeRun> {
-  const run = queue.then(() => runPythonNow(code, entry, tests));
+  const run = queue.then(() => runPythonNow(code, entry, tests)).catch((e): CodeRun => ({ error: e instanceof Error ? e.message : String(e) })); // never rejects, so one failure can't jam the queue
   queue = run;
   return run;
 }
