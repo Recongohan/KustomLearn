@@ -46,7 +46,7 @@ const CreateInput = z.object({
   variation: Variation.extend({
     name: z.string().trim().min(1).max(60),
     pitch: z.string().trim().max(300),
-    outcomes: z.array(z.string().trim().min(1).max(200)).max(3),
+    outcomes: z.array(z.string().trim().min(1).max(200)).min(1).max(3),
     weeks: z.number().int().min(1).max(12),
     hoursPerWeek: z.number().int().min(1).max(20),
     modules: z.number().int().min(3).max(16),
