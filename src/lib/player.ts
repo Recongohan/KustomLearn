@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import type { ModuleContent, Outline } from "./ai/generate";
 import type { Variation } from "./ai/intake";
@@ -19,6 +19,16 @@ export function gradeQuiz(quiz: ModuleContent["quiz"], answers: number[]): Grade
   const correct = quiz.map((q, i) => answers[i] === q.answer);
   const score = quiz.length ? correct.filter(Boolean).length / quiz.length : 1;
   return { correct, score, passed: score >= PASS };
+}
+
+/**
+ * Pays XP once per star level reached, each under its own key, so it never depends on reading the old row:
+ * two concurrent results can't both pay, and improving later pays only the new levels.
+ */
+async function awardStars(userId: string, item: string, kind: "quiz" | "lab", best: number, boss = false) {
+  let xp = 0;
+  for (let s = 1; s <= best; s++) xp += await award(userId, `${item}:${s}`, kind, itemXp(kind, s, boss) - itemXp(kind, s - 1, boss));
+  return xp;
 }
 
 /** 3 stars: perfect on the first try. 2: passed on the first try. 1: passed later. Hints arrive with labs. */
@@ -163,26 +173,30 @@ export async function submitQuiz(courseId: string, userId: string, position: num
   const graded = gradeQuiz(quiz, answers);
 
   const id = itemId(position);
-  const [prev] = await db
-    .select()
-    .from(schema.progress)
-    .where(and(eq(schema.progress.userId, userId), eq(schema.progress.courseId, courseId), eq(schema.progress.itemId, id)));
-  const attempt = (prev?.attempts ?? 0) + 1;
-  const stars = starsFor(graded, attempt);
-  const best = Math.max(stars, prev?.stars ?? 0);
-  const values = {
-    status: prev?.status === "done" || graded.passed ? ("done" as const) : ("started" as const),
-    score: Math.round(Math.max(graded.score, (prev?.score ?? 0) / 100) * 100),
-    attempts: attempt,
-    stars: best,
-    updatedAt: new Date(),
-  };
-  await db
-    .insert(schema.progress)
-    .values({ userId, courseId, itemId: id, ...values })
-    .onConflictDoUpdate({ target: [schema.progress.userId, schema.progress.courseId, schema.progress.itemId], set: values });
+  const p = schema.progress;
+  const mine = and(eq(p.userId, userId), eq(p.courseId, courseId), eq(p.itemId, id));
+  // One atomic step claims this attempt's number, so two quick submits can't both count as the first try.
+  const [claimed] = await db
+    .insert(p)
+    .values({ userId, courseId, itemId: id, status: "started", attempts: 1 })
+    .onConflictDoUpdate({ target: [p.userId, p.courseId, p.itemId], set: { attempts: sql`${p.attempts} + 1`, updatedAt: new Date() } })
+    .returning({ attempts: p.attempts });
+  const stars = starsFor(graded, claimed.attempts);
+  // Merged in the database, so a concurrent submit can never lower the best stars, the best score or a cleared level.
+  const [row] = await db
+    .update(p)
+    .set({
+      stars: sql`greatest(${p.stars}, ${stars})`,
+      score: sql`greatest(coalesce(${p.score}, 0), ${Math.round(graded.score * 100)})`,
+      ...(graded.passed ? { status: "done" as const } : {}),
+      updatedAt: new Date(),
+    })
+    .where(mine)
+    .returning({ stars: p.stars, status: p.status });
+  const best = row.stars;
+  const values = { status: row.status };
 
-  const xp = await award(userId, `quiz:${courseId}:${id}:${best}`, "quiz", itemXp("quiz", best) - itemXp("quiz", prev?.stars ?? 0));
+  const xp = await awardStars(userId, `quiz:${courseId}:${id}`, "quiz", best);
   if (graded.passed) await recordClear(userId, "quiz", `quiz:${courseId}:${id}`);
   return {
     ...graded,
@@ -284,7 +298,7 @@ export async function labSubmit(courseId: string, userId: string, position: numb
   const map = await courseMap(courseId, userId);
   const levelDone = !!map?.modules[position]?.done;
   const boss = isBoss(position, map?.modules.length ?? 1, k, ctx.labs);
-  const xp = await award(userId, `lab:${courseId}:${ctx.item}:${best}`, "lab", itemXp("lab", best, boss) - itemXp("lab", ctx.row?.stars ?? 0, boss));
+  const xp = await awardStars(userId, `lab:${courseId}:${ctx.item}`, "lab", best, boss);
   if (passed) await recordClear(userId, "lab", `lab:${courseId}:${ctx.item}`);
   return {
     tests,

@@ -44,7 +44,7 @@ export function Quiz({ courseId, position, questions, best }: Props) {
     start(async () => {
       if (choice == null) return;
       setError(null);
-      const r = await checkAction(courseId, position, index, choice);
+      const r = await checkAction(courseId, position, index, choice).catch(() => null); // offline or server error: same retry message
       if (!r) return setError("Couldn't check that answer. Try again.");
       setChecked(r);
       setAnswers((a) => [...a, choice]);
@@ -59,7 +59,7 @@ export function Quiz({ courseId, position, questions, best }: Props) {
         return;
       }
       setError(null);
-      const r = await submitAction(courseId, position, answers);
+      const r = await submitAction(courseId, position, answers).catch(() => null);
       if (!r) return setError("Couldn't save your result. Try again.");
       setResult(r);
       router.refresh(); // the map behind this page now shows the new stars and the next level
