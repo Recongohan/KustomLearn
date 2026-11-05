@@ -1,0 +1,80 @@
+@import "tailwindcss";
+
+/* Theme tokens. Dark is the default; [data-theme="light"] switches. */
+:root,
+[data-theme="dark"] {
+  --bg: #0e0f12;
+  --side: #0b0c0f;
+  --panel: #16181d;
+  --panel-2: #1f2229;
+  --line: #252932;
+  --track: #2a2e37;
+  --text: #f2f3f5;
+  --muted: #a3a9b4;
+  --blue-ink: #8cc2ff;
+  --gold-ink: #ffc23d;
+  --pink-ink: #ff8fab;
+  --green-ink: #5fe3a8;
+  color-scheme: dark;
+}
+[data-theme="light"] {
+  --bg: #f4f5f8;
+  --side: #ffffff;
+  --panel: #ffffff;
+  --panel-2: #f1f2f6;
+  --line: #e4e6eb;
+  --track: #e4e6eb;
+  --text: #14161b;
+  --muted: #565d69;
+  --blue-ink: #1d5fbf;
+  --gold-ink: #8a5f00;
+  --pink-ink: #be1848;
+  --green-ink: #0f7a4c;
+  color-scheme: light;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-side: var(--side);
+  --color-panel: var(--panel);
+  --color-panel-2: var(--panel-2);
+  --color-line: var(--line);
+  --color-track: var(--track);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-blue: #4f9dff;
+  --color-gold: #ffc23d;
+  --color-green: #2fd18a;
+  --color-pink: #ff4f7b;
+  --color-orange: #ff7a2f;
+  --color-blue-ink: var(--blue-ink);
+  --color-gold-ink: var(--gold-ink);
+  --color-pink-ink: var(--pink-ink);
+  --color-green-ink: var(--green-ink);
+  --font-sans: var(--font-body);
+  --font-display: var(--font-display);
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body), system-ui, sans-serif;
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+:focus-visible {
+  outline: 3px solid #4f9dff;
+  outline-offset: 2px;
+}
+
+/* Mascot motion */
+@keyframes kl-blink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(0.1); } }
+@keyframes kl-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+@keyframes kl-wave { from { transform: translateX(0); } to { transform: translateX(40px); } }
+.kl-eyes { transform-origin: 50% 50%; transform-box: fill-box; animation: kl-blink 4s infinite; }
+.kl-bob { animation: kl-bob 2.4s ease-in-out infinite; }
+.kl-wave { animation: kl-wave 2.4s linear infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+}

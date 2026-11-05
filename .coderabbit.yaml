@@ -1,0 +1,23 @@
+# CodeRabbit: install the GitHub app on this repo for these settings to apply.
+language: en-US
+reviews:
+  profile: assertive
+  request_changes_workflow: false
+  high_level_summary: true
+  auto_review:
+    enabled: true
+    drafts: false
+  path_filters:
+    - "!.claude/**"
+    - "!docs/design/**"
+    - "!drizzle/meta/**"
+    - "!package-lock.json"
+  tools:
+    biome:
+      enabled: false # can't parse Tailwind v4 CSS; ESLint covers the code
+  path_instructions:
+    - path: "src/**"
+      instructions: >-
+        Security first: the user's API key must never reach the client or logs; validate every
+        server action input; check user scoping on every query. UI must be mobile-first, keyboard
+        accessible, and respect prefers-reduced-motion.
