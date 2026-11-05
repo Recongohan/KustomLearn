@@ -6,6 +6,7 @@
     "dev": "concurrently -k -n app,jobs -c blue,yellow \"next dev\" \"inngest-cli dev -u http://localhost:3000/api/inngest --no-discovery\"",
     "build": "next build",
     "start": "next start",
+    "local": "next build && concurrently -k -n app,jobs -c blue,yellow \"next start\" \"inngest-cli dev -u http://localhost:3000/api/inngest --no-discovery\"",
     "lint": "eslint",
     "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run",

@@ -19,8 +19,9 @@ MIT
 **Local** (Node 22+):
 ```bash
 npm install
-npm run dev        # app on :3000, job runner on :8288
+npm run local      # builds once, then runs the fast production server on :3000 (job runner on :8288)
 ```
+`npm run dev` is for changing the code: it compiles each page the first time you open it, so it feels slow.
 Open http://localhost:3000 and add your Anthropic key in Settings. Data lives in `./data`.
 
 **Docker:**
