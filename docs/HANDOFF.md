@@ -39,7 +39,7 @@ PRs are stacked. Each targets the branch before it:
 - **M5 slice 2:** code labs in Python and JavaScript.
   - **JavaScript:** QuickJS (wasm) on both sides. The server uses `@jitl/quickjs-singlefile-mjs-release-sync`; the browser uses `-browser-release-sync`.
   - **Python on the server:** Pyodide in a child process with `--permission`, an empty env, sockets patched shut, a `process.binding` shim and a 30 s kill.
-  - **Python in the browser:** a Web Worker with a 10 s kill. Pyodide is served by the allowlisted route `/pyodide/[file]`.
+  - **Python in the browser:** a Web Worker, one run at a time, killed after 90 s on the first run (while Pyodide downloads) and 10 s after that. Pyodide is served by the allowlisted route `/pyodide/[file]`.
 - **M5 slice 3:** terminal labs. `src/lib/labs/shell.ts` is a simulated shell (pure TS) used by the browser and the server. The browser sends the session's commands and the server grades by `replay()`, so terminal grades can't be faked. grep uses RE2 (`re2js`, linear time), the simulated disk is capped (2,000 entries, 2M characters) and a replay stops after 3 s. Check texts never reach the browser, only their names.
 - **M6 gamification:** `src/lib/game.ts` holds the pure rules (levels, the streak/freeze/rank fold, quests, trophies, buddies, mini-bosses). `src/lib/gameplay.ts` reads two append-only logs, `xp_events` (unique per user+key, so no double pay) and `study_days` (a minute per 50 s beat, while a lesson is visible and the learner is active), and computes everything else.
   - Days use the learner's time zone, from the `kl_tz` cookie set in the layout's inline script. The first visit reloads once to set it.
@@ -70,7 +70,7 @@ PRs are stacked. Each targets the branch before it:
 - A motion pass across the app: animated typing (the describe box on /new and text appearing), visual feedback on every input and action, and animation wherever it fits, each with a reduced-motion fallback.
 
 ## Known shortcuts (`grep -rn "shortcut:" src`)
-- **Faked results:** for quiz instant-check and for log and code labs, the browser reports its results, so a learner could fake them. Fine for self-study; re-run on the server before any leaderboard. Terminal labs are replayed on the server.
+- **Faked results:** for log and code labs the browser reports its results, so a learner could fake them. Quizzes are graded on the server; instant check only reveals the answer. Fine for self-study; re-run on the server before any leaderboard. Terminal labs are replayed on the server.
 - **Estimate:** `estimate.ts` prices all input at the full rate and its token constants are untuned. There is no real Claude run yet (no key).
 - **Lab repair retries:** a module is one Inngest step, so if it crashes after a lab repair, the retry regenerates and repairs again. The first try's repair tokens stay counted, because they were really spent, and the cap still bounds the total. The fix is to make each lab check or repair its own durable step.
 - **Pyodide cache:** `/pyodide/*` URLs aren't versioned, so they are cached for a day rather than a year. Put the version in the path at the next Pyodide upgrade.
