@@ -54,16 +54,16 @@ export function normalize(intake: Intake): Intake {
   return {
     ...intake,
     intent: intake.intent.trim().slice(0, 120),
-    category: intake.category.trim().slice(0, 80),
-    variations: intake.variations.slice(0, 3).map((v) => ({
+    category: intake.category.trim().slice(0, 80) || "Tech", // never empty: the create action requires it
+    variations: intake.variations.slice(0, 3).map((v, i) => ({
       ...v,
-      name: v.name.trim().slice(0, 60),
+      name: v.name.trim().slice(0, 60) || `Option ${i + 1}`,
       pitch: v.pitch.trim().slice(0, 300),
       weeks: clamp(v.weeks, 1, 12),
       hoursPerWeek: clamp(v.hoursPerWeek, 1, 20),
       modules: clamp(v.modules, 3, 16),
       labs: { code: clamp(v.labs.code, 0, 30), terminal: clamp(v.labs.terminal, 0, 30), logs: clamp(v.labs.logs, 0, 30) },
-      outcomes: v.outcomes.slice(0, 3).map((o) => o.trim().slice(0, 200)),
+      outcomes: v.outcomes.map((o) => o.trim().slice(0, 200)).filter(Boolean).slice(0, 3),
     })),
   };
 }
@@ -88,6 +88,6 @@ export async function understand(request: string, opts: { apiKey: string; model:
   if (res.stop_reason === "refusal") throw new IntakeError("The model declined this request. Try describing it differently.", usage);
   if (!res.parsed_output) throw new IntakeError("Couldn't understand that. Try again in a moment.", usage);
   const intake = normalize(res.parsed_output);
-  if (intake.inScope && intake.variations.length !== 3) throw new IntakeError("Couldn't build three options. Try again.", usage);
+  if (intake.inScope && (!intake.intent || intake.variations.length !== 3 || intake.variations.some((v) => !v.outcomes.length))) throw new IntakeError("Couldn't build three options. Try again.", usage);
   return { intake, ...usage };
 }
