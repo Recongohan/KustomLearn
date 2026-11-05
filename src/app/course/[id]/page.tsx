@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import { progressOf } from "@/lib/generation";
 import { currentUserId } from "@/lib/settings";
 import { getDb, schema } from "@/db";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { Variation } from "@/lib/ai/intake";
 import { CourseLive } from "./CourseLive";
 import { WorldMap } from "@/components/player/WorldMap";
@@ -13,7 +13,8 @@ import { courseMap } from "@/lib/player";
 async function Course({ id }: { id: Promise<string> }) {
   await connection();
   const courseId = await id;
-  const progress = /^[0-9a-f-]{36}$/.test(courseId) ? await progressOf(courseId, currentUserId()) : null;
+  const userId = currentUserId();
+  const progress = /^[0-9a-f-]{36}$/.test(courseId) ? await progressOf(courseId, userId) : null;
   if (!progress) notFound();
   if (progress.status === "ready") {
     const map = (await courseMap(courseId, currentUserId()))!;
@@ -21,7 +22,8 @@ async function Course({ id }: { id: Promise<string> }) {
     return <WorldMap id={courseId} title={map.title} intent={map.intent} category={map.category} capstone={map.variation.capstone} hoursPerWeek={map.variation.hoursPerWeek} modules={map.modules} today={today} />;
   }
   const db = await getDb();
-  const [course] = await db.select().from(schema.courses).where(eq(schema.courses.id, courseId));
+  const [course] = await db.select().from(schema.courses).where(and(eq(schema.courses.id, courseId), eq(schema.courses.userId, userId)));
+  if (!course) notFound();
   return <CourseLive id={courseId} intent={course.intent} category={course.category} variation={course.variation as Variation} initial={progress} />;
 }
 
